@@ -218,6 +218,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
         for m in metrics:
             output += m + ":  " + f"{logs[m][best_record_index]}  "
         print(output)
+
     import matplotlib.pyplot as plt
 
     for m in metrics:
@@ -225,7 +226,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
     plt.legend(loc="upper left", shadow=True, title=model._get_name(), fancybox=True)
     # plt.show()
     # plot some figures here
-
+    return logs
 
 def test(model: nn.Module, data_loader, optimizer, loss_func, n_epochs, cuda=True):
     model.eval()

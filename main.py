@@ -86,7 +86,12 @@ model = model.to(args.device)
 kt_loss = KTLoss()
 
 # train model
-train(model, data_loaders, optimizer, kt_loss, args.n_epochs, args.cuda)
+train_logs = train(model, data_loaders, optimizer, kt_loss, args.n_epochs, args.cuda)
+
+config = args
+
+# save training log, including essential config: dataset , model hyperparameters, best metrics
+
 
 # test model
 
