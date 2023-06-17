@@ -1,3 +1,5 @@
+import random
+
 import torch
 from torch import nn
 import numpy as np
@@ -21,20 +23,19 @@ class DKVMNHeadGroup(nn.Module):
             nn.init.constant_(self.erase.bias, 0)
             nn.init.constant_(self.add.bias, 0)
 
-
-    def addressing(self, control_input, memory):
+    def addressing(self, control_input, memory,mask=None):
         """
         Parameters
             control_input:          Shape (batch_size, control_state_dim)
             memory:                 Shape (memory_size, memory_state_dim)
+            mask :                  Shape (batch_size, memory_size)
         Returns
             correlation_weight:     Shape (batch_size, memory_size)
         """
-        assert control_input.shape[1] == memory.shape[1]
-        torch.set_printoptions(precision=2)
 
-        #print('control input:', control_input)
         similarity_score = torch.matmul(control_input, torch.t(memory)) # [b， m] ,for every q in batch ,cal similarity  with memory slot
+        if mask is not None:
+            similarity_score = similarity_score * mask
         assert not torch.any(torch.isnan(similarity_score))
         correlation_weight = torch.nn.functional.softmax(similarity_score, dim=1) # Shape: (batch_size, memory_size)
         return correlation_weight
@@ -115,10 +116,13 @@ class DKVMN_Module(nn.Module):
     def init_value_memory(self, memory_value):
         self.memory_value = memory_value
 
-    def attention(self, control_input):
+    def attention(self, control_input,mask=None):
+        correlation_weight = self.key_head.addressing(control_input=control_input, memory=self.memory_key,mask=mask)
 
-        correlation_weight = self.key_head.addressing(control_input=control_input, memory=self.memory_key)
         return correlation_weight
+
+    def set_qs_matrix(self, qs_matrix):
+        self.qs_matrix = qs_matrix
 
     def read(self, read_weight):
         read_content = self.value_head.read(memory=self.memory_value, read_weight=read_weight)
@@ -170,6 +174,11 @@ class DKVMN(nn.Module):
         self.q_embed = nn.Embedding(self.n_question + 1, self.q_embed_dim, padding_idx=0)
         self.qa_embed = nn.Embedding(2 * self.n_question + 1, self.qa_embed_dim, padding_idx=0)
 
+
+
+    def set_qs_matrix(self, qs_matrix):
+        self.mem.set_qs_matrix(qs_matrix)
+
     def init_params(self):
         nn.init.kaiming_normal_(self.predict_linear.weight)
         nn.init.kaiming_normal_(self.read_embed_linear.weight)
@@ -184,7 +193,7 @@ class DKVMN(nn.Module):
         nn.init.kaiming_normal_(self.qa_embed.weight)
 
 
-    def forward(self, q_data, qa_data, target, student_id=None):
+    def _forward(self, q_data, qa_data, target, student_id=None):
         seqlen = q_data.shape[1]
         batch_size = q_data.shape[0]
         target_2d = target.reshape(batch_size,-1)
@@ -203,11 +212,11 @@ class DKVMN(nn.Module):
         assert not torch.any(torch.isnan(q_embed_data))
         qa_embed_data = self.qa_embed(qa_data) #[batch_size,seqlen,qa_embed_dim]
 
-
         memory_value = nn.Parameter(torch.cat([self.init_memory_value.unsqueeze(0) for _ in range(batch_size)], 0).data)
         self.mem.init_value_memory(memory_value)
 
         slice_q_data = torch.chunk(q_data, seqlen, 1)
+
         slice_q_embed_data = torch.chunk(q_embed_data, seqlen, 1)
         slice_qa_embed_data = torch.chunk(qa_embed_data, seqlen, 1)
 
@@ -220,19 +229,19 @@ class DKVMN(nn.Module):
             q = slice_q_embed_data[i].squeeze(1) #[b,d]
             assert not torch.any(torch.isnan(q))
 
-            # print('question feature :' ,q.shape)
+            print('question feature :' ,q.shape)
 
             correlation_weight = self.mem.attention(q)
 
-            # print('correlation_weight :',correlation_weight.shape)
+            print('correlation_weight :',correlation_weight.shape)
             assert not torch.any(torch.isnan(correlation_weight))
             if_memory_write = slice_q_data[i].squeeze(1).ge(1)
             if_memory_write = if_memory_write.float()
-            ###if_memory_write = utils.varible(torch.FloatTensor(if_memory_write.junyi.tolist()), 1)
+            ###if_memory_write = utils.varible(torch.FloatTensor(if_memory_write.data.tolist()), 1)
 
             ## Read Process
             read_content = self.mem.read(correlation_weight)
-            # print('read_content:',read_content.shape)
+            print('read_content:',read_content.shape)
             assert not torch.any(torch.isnan(read_content))
             value_read_content_l.append(read_content)
             input_embed_l.append(q)
@@ -244,6 +253,7 @@ class DKVMN(nn.Module):
             # read_content_embed = torch.tanh(self.read_embed_linear(torch.cat([read_content, q], 1)))
             # pred = self.predict_linear(read_content_embed)
             # predict_logs.append(pred)
+
         all_read_value_content = torch.cat([value_read_content_l[i].unsqueeze(1) for i in range(seqlen)], 1)
         input_embed_content = torch.cat([input_embed_l[i].unsqueeze(1) for i in range(seqlen)], 1)
 
@@ -258,7 +268,59 @@ class DKVMN(nn.Module):
 
 
         # predicts = torch.cat([predict_logs[i] for i in range(seqlen)], 1)
-        target_1d = target                   # [batch_size * seq_len, 1]
+        target_1d = target.view(-1,1)                   # [batch_size * seq_len, 1]
+        mask = target_1d.ge(0)               # [batch_size * seq_len, 1]
+        # pred_1d = predicts.view(-1, 1)           # [batch_size * seq_len, 1]
+        pred_1d = pred.view(-1, 1)           # [batch_size * seq_len, 1]
+        print(pred_1d.shape)
+        print(mask.shape)
+        filtered_pred = torch.masked_select(pred_1d, mask)
+        filtered_target = torch.masked_select(target_1d, mask)
+        filtered_target = filtered_target.float()
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(filtered_pred, filtered_target)
+
+        return loss, torch.sigmoid(filtered_pred), filtered_target
+
+    def _forward_re(self,q_data,qa_data,target):
+        bs = q_data.shape[0]
+        seq_len = q_data.shape[1]
+        q_embed = self.q_embed(q_data)
+        qa_embed = self.qa_embed(qa_data)
+        q_embed_chunk = torch.chunk(q_embed,chunks=seq_len,dim=1)  # chunk by the seq_len dim
+        qa_embed_chunk = torch.chunk(qa_embed,chunks=seq_len,dim=1)
+        q_seq_chunk = torch.chunk(qa_embed,chunks=seq_len,dim=1)
+
+        read_value_list = []
+        for i in range(seq_len):
+            q_embed_i = q_embed_chunk[i].squeeze(1)
+            qa_embed_i = qa_embed_chunk[i].squeeze(1)
+            q_i = q_seq_chunk[i].squeeze(1)
+
+            # get attention score
+
+            correlation_weight = self.mem.attention(q_embed_i)
+
+            # read
+            read_value = self.mem.read(correlation_weight)
+
+            read_value_list.append(read_value)
+
+            # write
+            if_memory_write = q_i.squeeze(1).ge(1)
+            if_memory_write = if_memory_write.float()
+            self.mem.write(correlation_weight, qa_embed_i, if_memory_write)
+
+        batch_read_value_all = torch.cat([read_value_list[i].unsqueeze(1) for i in range(max_seq_len)], 1)
+
+
+        predict_input = torch.cat([batch_read_value_all, q_embed], 2)
+        read_content_embed = torch.tanh(self.read_embed_linear(predict_input.view(bs*max_seq_len, -1)))
+
+        pred = self.predict_linear(read_content_embed)
+
+
+        # predicts = torch.cat([predict_logs[i] for i in range(seqlen)], 1)
+        target_1d = target.view(-1,1)                   # [batch_size * seq_len, 1]
         mask = target_1d.ge(0)               # [batch_size * seq_len, 1]
         # pred_1d = predicts.view(-1, 1)           # [batch_size * seq_len, 1]
         pred_1d = pred.view(-1, 1)           # [batch_size * seq_len, 1]
@@ -270,9 +332,99 @@ class DKVMN(nn.Module):
 
         return loss, torch.sigmoid(filtered_pred), filtered_target
 
+    def _forward_with_mask(self,q_data,qa_data,target,qs_matrix):
+        assert qs_matrix.shape[0] == self.n_question+1
+        assert qs_matrix.shape[1] == self.memory_size
+        seqlen = q_data.shape[1]
+        batch_size = q_data.shape[0]
+        target_2d = target.reshape(batch_size,-1)
+        target_2d_is_pad = (target_2d<0)
+        qa_data_is_pad = (qa_data==0)
+        q_data_is_pad  = (q_data==0)
+        # assert torch.all(q_data_is_pad == qa_data_is_pad)
+        #
+        # assert torch.all(qa_data_is_pad == target_2d_is_pad)
+        #
+        #
+        # assert torch.max(q_data)<self.q_embed.num_embeddings
+        # assert torch.max(q_data) >= 0
+        assert not torch.any(torch.isnan(self.q_embed.weight))
+        q_embed_data = self.q_embed(q_data)   #[batch_size,seqlen,q_embed_dim]
+        assert not torch.any(torch.isnan(q_embed_data))
+        qa_embed_data = self.qa_embed(qa_data) #[batch_size,seqlen,qa_embed_dim]
+
+        memory_value = nn.Parameter(torch.cat([self.init_memory_value.unsqueeze(0) for _ in range(batch_size)], 0).data)
+        self.mem.init_value_memory(memory_value)
+
+        slice_q_data = torch.chunk(q_data, seqlen, 1)
+
+        slice_q_embed_data = torch.chunk(q_embed_data, seqlen, 1)
+        slice_qa_embed_data = torch.chunk(qa_embed_data, seqlen, 1)
 
 
+        value_read_content_l = []
+        input_embed_l = []
+        predict_logs = []
+        for i in range(seqlen):
+            ## Attention
+            q_one_hot = torch.nn.functional.embedding(input=q_data[i],weight=torch.eye(self.n_question+1)) #[batch_size,q_num+1]
 
+            s_one_hot = q_one_hot @ qs_matrix #[batch_size,memory_num]
+
+            q = slice_q_embed_data[i].squeeze(1) #[b,d]
+            assert not torch.any(torch.isnan(q))
+
+            print('question feature :' ,q.shape)
+
+            correlation_weight = self.mem.attention(q)
+
+            print('correlation_weight :',correlation_weight.shape)
+            assert not torch.any(torch.isnan(correlation_weight))
+            if_memory_write = slice_q_data[i].squeeze(1).ge(1)
+            if_memory_write = if_memory_write.float()
+            ###if_memory_write = utils.varible(torch.FloatTensor(if_memory_write.data.tolist()), 1)
+
+            ## Read Process
+            read_content = self.mem.read(correlation_weight)
+            print('read_content:',read_content.shape)
+            assert not torch.any(torch.isnan(read_content))
+            value_read_content_l.append(read_content)
+            input_embed_l.append(q)
+            ## Write Process
+            qa = slice_qa_embed_data[i].squeeze(1)
+
+            new_memory_value = self.mem.write(correlation_weight, qa, if_memory_write)
+
+            # read_content_embed = torch.tanh(self.read_embed_linear(torch.cat([read_content, q], 1)))
+            # pred = self.predict_linear(read_content_embed)
+            # predict_logs.append(pred)
+
+        all_read_value_content = torch.cat([value_read_content_l[i].unsqueeze(1) for i in range(seqlen)], 1)
+        input_embed_content = torch.cat([input_embed_l[i].unsqueeze(1) for i in range(seqlen)], 1)
+
+        # input_embed_content = input_embed_content.view(batch_size * seqlen, -1)
+        # input_embed_content = torch.tanh(self.input_embed_linear(input_embed_content))
+        # input_embed_content = input_embed_content.view(batch_size, seqlen, -1)
+
+        predict_input = torch.cat([all_read_value_content, input_embed_content], 2)
+        read_content_embed = torch.tanh(self.read_embed_linear(predict_input.view(batch_size*seqlen, -1)))
+
+        pred = self.predict_linear(read_content_embed)
+
+
+        # predicts = torch.cat([predict_logs[i] for i in range(seqlen)], 1)
+        target_1d = target.view(-1,1)                   # [batch_size * seq_len, 1]
+        mask = target_1d.ge(0)               # [batch_size * seq_len, 1]
+        # pred_1d = predicts.view(-1, 1)           # [batch_size * seq_len, 1]
+        pred_1d = pred.view(-1, 1)           # [batch_size * seq_len, 1]
+        print(pred_1d.shape)
+        print(mask.shape)
+        filtered_pred = torch.masked_select(pred_1d, mask)
+        filtered_target = torch.masked_select(target_1d, mask)
+        filtered_target = filtered_target.float()
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(filtered_pred, filtered_target)
+
+        return loss, torch.sigmoid(filtered_pred), filtered_target
 if __name__=='__main__':
     embed_dim = 200
     q_embed_dim = 50
@@ -281,6 +433,7 @@ if __name__=='__main__':
     pro_num = 10000
     memory_size = 100
     bs = 256
+    max_seq_len = 200
 
     model = DKVMN(n_question=pro_num,
                   batch_size=bs,
@@ -298,8 +451,6 @@ if __name__=='__main__':
         for buffer in model.buffers():
             param_count += buffer.nelement()
         print('model parameter number: {:.3f}M'.format(param_count / 1000000))
-
-
     def get_model_size(model: torch.nn.Module):
         param_size = 0
         for param in model.parameters():
@@ -314,3 +465,35 @@ if __name__=='__main__':
     count_model_parameters(model)
     get_model_size(model)
 
+    def gen_dummy_data(q_num,s_num,bs = 64, max_seq_len = 200):
+        fake_q_seq = torch.randint(low=0,high=q_num,size = (bs,max_seq_len))
+        fake_a_seq = torch.randint(low=0,high=1,size = (bs,max_seq_len))
+        fake_f_seq = fake_q_seq + fake_a_seq * q_num
+        seq_len_list = [random.randint(int(max_seq_len/3),max_seq_len) for _ in range(0,bs)]
+        for idx,l in enumerate(seq_len_list):
+            fake_q_seq[idx,l:] = 0
+            fake_a_seq[idx,l:] = -1
+            fake_f_seq[idx,l:] = 0
+        fake_qs_matrix = torch.randint(low=0,high=1,size=(q_num,s_num))
+        return fake_f_seq,fake_q_seq, fake_a_seq, fake_qs_matrix
+    f_seq, q_seq , a_seq,qs_matrix = gen_dummy_data(
+        q_num=pro_num ,
+        s_num=memory_size,
+        bs = bs,
+        max_seq_len=max_seq_len
+    )
+    loss1, pred1,target1 = model.forward(
+        q_data=q_seq,
+        qa_data=f_seq,
+        target=a_seq
+    )
+
+    loss2, pred2,target2 = model.forward_re(
+        q_data=q_seq,
+        qa_data=f_seq,
+        target=a_seq
+    )
+
+
+    print(loss1)
+    print(loss2)
