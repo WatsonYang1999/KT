@@ -1,10 +1,15 @@
 import argparse
 import torch
+import os
+import numpy as np
 from KT.utils import load_model, load_dataset
 from KT.train import train, test
 from KT.models.Loss import KTLoss
 from KT.models.Pretrain import embedding_pretrain
+from datetime import datetime
+import time
 
+time_program_begin = datetime.now()
 def set_parser():
     parser = argparse.ArgumentParser()
     '''
@@ -30,7 +35,7 @@ def set_parser():
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
-    parser.add_argument('--n_epochs', type=int, default=200, help='Total Epochs.')
+    parser.add_argument('--n_epochs', type=int, default=1, help='Total Epochs.')
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_seq_len', type=int, default=200)
     parser.add_argument('--shuffle', type=bool, default=True)
@@ -86,13 +91,43 @@ model = model.to(args.device)
 kt_loss = KTLoss()
 
 # train model
-train_logs = train(model, data_loaders, optimizer, kt_loss, args.n_epochs, args.cuda)
-
+time_training_begin = datetime.now()
+logs = train(model, data_loaders, optimizer, kt_loss, args.n_epochs, args.cuda)
+time_training_end = datetime.now()
 config = args
+def reformat_datatime(dt:datetime):
+    formatted_time = dt.strftime("%y-%m-%d_%H-%M-%S")
+    return formatted_time
+log_file_name = '-'.join([args.dataset.__str__(),
+                          args.model.__str__(),
+                          reformat_datatime(time_program_begin)]) + '.txt'
+with open(os.path.join('Log',log_file_name),'w') as f:
+    # config the log content here
+    f.write(args.__str__())
+    f.write('-----------------------------------------------------------')
+    delta_time = datetime.timestamp(time_training_end) - datetime.timestamp(time_training_end)
+    f.write('Delta Time : ' + delta_time.__str__())
+    best_epoch = -1
+    best_val_auc = -1
+    metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
+    metric_select = 'val_auc'
+    greater_is_better = 1
+    for idx,metric_i in enumerate(logs[metric_select]):
+        if (best_val_auc-metric_i)*greater_is_better > 0:
+            best_val_auc = metric_i
+            best_epoch = idx
+    for m in metrics:
+        output = f"Best {metric_select} in epoch {best_epoch}: "
+        for m in metrics:
+            output += m + ":  " + f"{logs[m][best_epoch]}  "
+        f.write(output)
+
+    f.write('-----------------------------------------------------------')
+    f.write(str(logs))
 
 # save training log, including essential config: dataset , model hyperparameters, best metrics
 
 
 # test model
 
-test(model, train_loader, optimizer, kt_loss, args.n_epochs, args.cuda)
+# test(model, train_loader, optimizer, kt_loss, args.n_epochs, args.cuda)
