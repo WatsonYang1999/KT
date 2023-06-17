@@ -21,7 +21,7 @@ def set_parser():
     SAKT
     SAINT
     '''
-    parser.add_argument('--model', type=str, default='DKT_AUG', help='Model type to use, support GKT,SAKT,QGKT and DKT.')
+    parser.add_argument('--model', type=str, default='DKVMN_RE', help='Model type to use, support GKT,SAKT,QGKT and DKT.')
     '''
     Available Dataset:
     ednet
@@ -30,8 +30,8 @@ def set_parser():
     assist09-s
     assist17-s
     '''
-    #parser.add_argument('--dataset', type=str, default='assist09-q', help='Dataset You Wish To Load')
-    parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
+    parser.add_argument('--dataset', type=str, default='beihang', help='Dataset You Wish To Load')
+    #parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')

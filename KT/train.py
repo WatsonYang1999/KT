@@ -38,7 +38,7 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
                           for p in model.parameters())
 
             loss_kt = loss_kt + l2_lambda * l2_norm
-        elif model._get_name() == 'DKVMN':
+        elif model._get_name() in {'DKVMN','DKVMN_RE'}:
 
             loss_kt, filtered_pred, filtered_target = model.forward(questions, features,labels.reshape(-1, 1))
             from sklearn.metrics import roc_auc_score ,accuracy_score
@@ -137,7 +137,7 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
                 pred = model(features, questions, labels)
 
                 loss_kt, auc, acc = loss_func(pred, labels)
-            elif model._get_name() == 'DKVMN':
+            elif model._get_name() in {'DKVMN','DKVMN_RE'}:
 
                 loss_kt, filtered_pred, filtered_target = model.forward(questions, features, labels.reshape(-1, 1))
                 from sklearn.metrics import roc_auc_score, accuracy_score

@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-df = pd.read_csv('beihang/q_matrix.csv')
+df = pd.read_csv('Dataset/beihang/q_matrix.csv')
 def remap(q):
     return df.loc[df['id']==q].index.tolist()[0]+1
 
@@ -84,11 +84,11 @@ def reload_all():
     return  Q,A,L
 
 def load():
-    buaa_dict = np.load('beihang/BUAA.npz')
+    buaa_dict = np.load('Dataset/beihang/BUAA.npz')
     return buaa_dict['Q'],buaa_dict['A'],buaa_dict['L']
 
 def load_qmatrix():
 
-    df = pd.read_csv('beihang/q_matrix.csv')
+    df = pd.read_csv('Dataset/beihang/q_matrix.csv')
     q_matrix = df.to_numpy()[:,2:]
     return q_matrix
