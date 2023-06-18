@@ -21,7 +21,7 @@ def set_parser():
     SAKT
     SAINT
     '''
-    parser.add_argument('--model', type=str, default='DKVMN', help='Model type to use, support GKT,SAKT,QGKT and DKT.')
+    parser.add_argument('--model', type=str, default='DKVMN_RE', help='Model type to use, support GKT,SAKT,QGKT and DKT.')
     '''
     Available Dataset:
     ednet
@@ -76,7 +76,6 @@ print(args)
 train_loader = data_loaders['train_loader']
 test_loader = data_loaders['test_loader']
 args.qs_matrix = data_loaders['qs_matrix']
-print(args.qs_matrix)
 
 if args.pretrain == 'scratch':
     embedding_pretrain(args,train_loader.dataset,test_loader.dataset,args.qs_matrix)

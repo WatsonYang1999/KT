@@ -178,7 +178,10 @@ class DKVMN_RE(nn.Module):
 
 
     def set_qs_matrix(self, qs_matrix):
-        self.qs_matrix = qs_matrix
+        if not isinstance(qs_matrix,torch.Tensor):
+            self.qs_matrix = torch.IntTensor(qs_matrix)
+        else:
+            self.qs_matrix = qs_matrix
         self.mem.set_qs_matrix(qs_matrix)
 
     def init_params(self):
@@ -198,8 +201,10 @@ class DKVMN_RE(nn.Module):
     def forward(self,q_data,qa_data,target):
         device = q_data.device
         qs_matrix = self.qs_matrix.to(device)
+
         assert qs_matrix.shape[0] == self.n_question+1
         assert qs_matrix.shape[1] == self.memory_size
+
         seqlen = q_data.shape[1]
         batch_size = q_data.shape[0]
         target_2d = target.reshape(batch_size,-1)
