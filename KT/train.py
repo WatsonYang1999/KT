@@ -189,6 +189,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
     best_val_auc = -1
     best_epoch = -1
     early_stop = True
+    early_stop_interval = 25
     for epoch in range(n_epochs):
         print(f"epoch: {epoch}")
 
@@ -201,12 +202,15 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
             best_val_auc = max(logs['val_auc'])
             best_epoch = epoch
 
-            if early_stop:
-                if best_epoch + 10 < epoch:
-                    print(f'Early Stop at epoch {epoch}!')
-                    break
+
 
             print(f'Epoch: {epoch} Best Test Set AUC Updated {best_val_auc}')
+        if early_stop:
+            if best_epoch + early_stop_interval < epoch:
+                print(f'Early Stop at epoch {epoch}!')
+                print(f'Epoch: {epoch} Best Test Set AUC Updated {best_val_auc}')
+                n_epochs = best_epoch
+                break
     for metric in metrics:
         arr = np.array(logs[metric])
         if metric in {'train_loss', 'val_loss'}:
@@ -218,6 +222,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
         for m in metrics:
             output += m + ":  " + f"{logs[m][best_record_index]}  "
         print(output)
+
 
     import matplotlib.pyplot as plt
 
