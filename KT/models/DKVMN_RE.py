@@ -179,7 +179,7 @@ class DKVMN_RE(nn.Module):
 
     def set_qs_matrix(self, qs_matrix):
         if not isinstance(qs_matrix,torch.Tensor):
-            self.qs_matrix = torch.IntTensor(qs_matrix)
+            self.qs_matrix = torch.FloatTensor(qs_matrix)
         else:
             self.qs_matrix = qs_matrix
         self.mem.set_qs_matrix(qs_matrix)

@@ -30,7 +30,7 @@ def set_parser():
     assist09-s
     assist17-s
     '''
-    parser.add_argument('--dataset', type=str, default='beihang', help='Dataset You Wish To Load')
+    parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
     #parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
