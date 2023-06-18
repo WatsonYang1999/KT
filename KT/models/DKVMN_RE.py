@@ -32,11 +32,10 @@ class DKVMNHeadGroup(nn.Module):
         Returns
             correlation_weight:     Shape (batch_size, memory_size)
         """
-        print(control_input.shape)
+
         similarity_score = torch.matmul(control_input, torch.t(memory)) # [b， m] ,for every q in batch ,cal similarity  with memory slot
         if mask is not None:
-            print(mask.shape)
-            print(similarity_score.shape)
+
             similarity_score = similarity_score * mask
         assert not torch.any(torch.isnan(similarity_score))
         correlation_weight = torch.nn.functional.softmax(similarity_score, dim=1) # Shape: (batch_size, memory_size)
@@ -159,7 +158,7 @@ class DKVMN_RE(nn.Module):
 
         self.input_embed_linear = nn.Linear(self.q_embed_dim, self.final_fc_dim, bias=True)
 
-        self.read_embed_linear = nn.Linear(self.memory_value_state_dim + self.final_fc_dim, self.final_fc_dim, bias=True)
+        self.read_embed_linear = nn.Linear(self.memory_value_state_dim + self.q_embed_dim, self.final_fc_dim, bias=True)
         self.predict_linear = nn.Linear(self.final_fc_dim, 1, bias=True)
         self.init_memory_key = nn.Parameter(torch.randn(self.memory_size, self.memory_key_state_dim))
         nn.init.kaiming_normal_(self.init_memory_key)
@@ -221,7 +220,7 @@ class DKVMN_RE(nn.Module):
 
         memory_value = nn.Parameter(torch.cat([self.init_memory_value.unsqueeze(0) for _ in range(batch_size)], 0).data)
         self.mem.init_value_memory(memory_value)
-        print(q_data.shape)
+
         slice_q_data = torch.chunk(q_data, seqlen, 1) # list of [64,0]
 
         slice_q_embed_data = torch.chunk(q_embed_data, seqlen, 1)
@@ -273,9 +272,9 @@ class DKVMN_RE(nn.Module):
         # input_embed_content = torch.tanh(self.input_embed_linear(input_embed_content))
         # input_embed_content = input_embed_content.view(batch_size, seqlen, -1)
 
-        predict_input = torch.cat([all_read_value_content, input_embed_content], 2)
+        predict_input = torch.cat([all_read_value_content, input_embed_content], 2) #[b,l,mem_dim + embed_dim]
         predict_input = predict_input.view(batch_size * seqlen, -1)
-        print(predict_input.shape)
+
         read_content_embed = torch.tanh(self.read_embed_linear(predict_input))
 
         pred = self.predict_linear(read_content_embed)

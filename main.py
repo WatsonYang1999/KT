@@ -35,7 +35,7 @@ def set_parser():
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
-    parser.add_argument('--n_epochs', type=int, default=1, help='Total Epochs.')
+    parser.add_argument('--n_epochs', type=int, default=20, help='Total Epochs.')
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_seq_len', type=int, default=200)
     parser.add_argument('--shuffle', type=bool, default=True)
