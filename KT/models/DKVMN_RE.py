@@ -3,6 +3,8 @@ import random
 import torch
 from torch import nn
 import numpy as np
+
+
 class DKVMNHeadGroup(nn.Module):
     def __init__(self, memory_size, memory_state_dim, is_write):
         super(DKVMNHeadGroup, self).__init__()
@@ -23,7 +25,7 @@ class DKVMNHeadGroup(nn.Module):
             nn.init.constant_(self.erase.bias, 0)
             nn.init.constant_(self.add.bias, 0)
 
-    def addressing(self, control_input, memory,mask=None):
+    def addressing(self, control_input, memory, mask=None):
         """
         Parameters
             control_input:          Shape (batch_size, control_state_dim)
@@ -33,12 +35,12 @@ class DKVMNHeadGroup(nn.Module):
             correlation_weight:     Shape (batch_size, memory_size)
         """
 
-        similarity_score = torch.matmul(control_input, torch.t(memory)) # [b， m] ,for every q in batch ,cal similarity  with memory slot
+        similarity_score = torch.matmul(control_input, torch.t(
+            memory))  # [b， m] ,for every q in batch ,cal similarity  with memory slot
         if mask is not None:
-
             similarity_score = similarity_score * mask
         assert not torch.any(torch.isnan(similarity_score))
-        correlation_weight = torch.nn.functional.softmax(similarity_score, dim=1) # Shape: (batch_size, memory_size)
+        correlation_weight = torch.nn.functional.softmax(similarity_score, dim=1)  # Shape: (batch_size, memory_size)
         return correlation_weight
 
     def read(self, memory, control_input=None, read_weight=None):
@@ -117,8 +119,8 @@ class DKVMN_Module(nn.Module):
     def init_value_memory(self, memory_value):
         self.memory_value = memory_value
 
-    def attention(self, control_input,mask=None):
-        correlation_weight = self.key_head.addressing(control_input=control_input, memory=self.memory_key,mask=mask)
+    def attention(self, control_input, mask=None):
+        correlation_weight = self.key_head.addressing(control_input=control_input, memory=self.memory_key, mask=mask)
 
         return correlation_weight
 
@@ -167,7 +169,8 @@ class DKVMN_RE(nn.Module):
 
         self.mem = DKVMN_Module(memory_size=self.memory_size,
                                 memory_key_state_dim=self.memory_key_state_dim,
-                                memory_value_state_dim=self.memory_value_state_dim, init_memory_key=self.init_memory_key)
+                                memory_value_state_dim=self.memory_value_state_dim,
+                                init_memory_key=self.init_memory_key)
 
         memory_value = nn.Parameter(torch.cat([self.init_memory_value.unsqueeze(0) for _ in range(batch_size)], 0).data)
         self.mem.init_value_memory(memory_value)
@@ -175,10 +178,8 @@ class DKVMN_RE(nn.Module):
         self.q_embed = nn.Embedding(self.n_question + 1, self.q_embed_dim, padding_idx=0)
         self.qa_embed = nn.Embedding(2 * self.n_question + 1, self.qa_embed_dim, padding_idx=0)
 
-
-
     def set_qs_matrix(self, qs_matrix):
-        if not isinstance(qs_matrix,torch.Tensor):
+        if not isinstance(qs_matrix, torch.Tensor):
             self.qs_matrix = torch.FloatTensor(qs_matrix)
         else:
             self.qs_matrix = qs_matrix
@@ -197,20 +198,19 @@ class DKVMN_RE(nn.Module):
         nn.init.kaiming_normal_(self.q_embed.weight)
         nn.init.kaiming_normal_(self.qa_embed.weight)
 
-
-    def forward(self,q_data,qa_data,target):
+    def forward(self, q_data, qa_data, target):
         device = q_data.device
         qs_matrix = self.qs_matrix.to(device)
 
-        assert qs_matrix.shape[0] == self.n_question+1
+        assert qs_matrix.shape[0] == self.n_question + 1
         assert qs_matrix.shape[1] == self.memory_size
 
         seqlen = q_data.shape[1]
         batch_size = q_data.shape[0]
-        target_2d = target.reshape(batch_size,-1)
-        target_2d_is_pad = (target_2d<0)
-        qa_data_is_pad = (qa_data==0)
-        q_data_is_pad  = (q_data==0)
+        target_2d = target.reshape(batch_size, -1)
+        target_2d_is_pad = (target_2d < 0)
+        qa_data_is_pad = (qa_data == 0)
+        q_data_is_pad = (q_data == 0)
         # assert torch.all(q_data_is_pad == qa_data_is_pad)
         #
         # assert torch.all(qa_data_is_pad == target_2d_is_pad)
@@ -219,35 +219,55 @@ class DKVMN_RE(nn.Module):
         # assert torch.max(q_data)<self.q_embed.num_embeddings
         # assert torch.max(q_data) >= 0
         assert not torch.any(torch.isnan(self.q_embed.weight))
-        q_embed_data = self.q_embed(q_data)   #[batch_size,seqlen,q_embed_dim]
+        q_embed_data = self.q_embed(q_data)  # [batch_size,seqlen,q_embed_dim]
         assert not torch.any(torch.isnan(q_embed_data))
-        qa_embed_data = self.qa_embed(qa_data) #[batch_size,seqlen,qa_embed_dim]
+        qa_embed_data = self.qa_embed(qa_data)  # [batch_size,seqlen,qa_embed_dim]
 
         memory_value = nn.Parameter(torch.cat([self.init_memory_value.unsqueeze(0) for _ in range(batch_size)], 0).data)
         self.mem.init_value_memory(memory_value)
 
-        slice_q_data = torch.chunk(q_data, seqlen, 1) # list of [64,0]
+        slice_q_data = torch.chunk(q_data, seqlen, 1)  # list of [64,0]
 
         slice_q_embed_data = torch.chunk(q_embed_data, seqlen, 1)
         slice_qa_embed_data = torch.chunk(qa_embed_data, seqlen, 1)
 
-
         value_read_content_l = []
         input_embed_l = []
         predict_logs = []
+
+        def check_gpu_memory_allocated():
+            allocated_memory = torch.cuda.memory_allocated(device)  # Convert bytes to gigabytes
+            peak_allocated_memory = torch.cuda.max_memory_allocated(device)
+
+            print(f"Initial GPU Memory Allocated: {allocated_memory / (1024 ** 2):.2f} MB")
+            print(f"GPU Peak Memory Allocated: {peak_allocated_memory / (1024 ** 2):.2f} MB")
+
+
+        qid_embed_one_hot = torch.eye(self.n_question + 1, device=device)
+        print('Init Done')
+        check_gpu_memory_allocated()
         for i in range(seqlen):
             ## Attention
 
             qid = slice_q_data[i].squeeze(1)
 
-            q = slice_q_embed_data[i].squeeze(1) #[b,d]
+            q = slice_q_embed_data[i].squeeze(1)  # [b,d]
 
-            q_one_hot = torch.nn.functional.embedding(input=qid,weight=torch.eye(self.n_question+1,device=device)) #[batch_size,q_num+1]
 
-            s_one_hot = q_one_hot @ qs_matrix #[batch_size,memory_num]
+            q_one_hot = torch.nn.functional.embedding(input=qid, weight=qid_embed_one_hot)  # [batch_size,q_num+1]
+            print('Calculating Q One hot')
+            check_gpu_memory_allocated()
 
-            correlation_weight = self.mem.attention(q, mask = s_one_hot)
 
+            s_one_hot = q_one_hot @ qs_matrix  # [batch_size,memory_num]
+
+            print('Calculating S One hot')
+            check_gpu_memory_allocated()
+
+
+            correlation_weight = self.mem.attention(q, mask=s_one_hot)
+            print('Calculating Correlation')
+            check_gpu_memory_allocated()
 
             assert not torch.any(torch.isnan(correlation_weight))
             if_memory_write = slice_q_data[i].squeeze(1).ge(1)
@@ -256,15 +276,18 @@ class DKVMN_RE(nn.Module):
 
             ## Read Process
             read_content = self.mem.read(correlation_weight)
-
             assert not torch.any(torch.isnan(read_content))
             value_read_content_l.append(read_content)
             input_embed_l.append(q)
+            print('Finish Reading')
+            check_gpu_memory_allocated()
             ## Write Process
             qa = slice_qa_embed_data[i].squeeze(1)
 
             new_memory_value = self.mem.write(correlation_weight, qa, if_memory_write)
-
+            print('Finish Writing')
+            check_gpu_memory_allocated()
+            exit(-1)
             # read_content_embed = torch.tanh(self.read_embed_linear(torch.cat([read_content, q], 1)))
             # pred = self.predict_linear(read_content_embed)
             # predict_logs.append(pred)
@@ -277,19 +300,18 @@ class DKVMN_RE(nn.Module):
         # input_embed_content = torch.tanh(self.input_embed_linear(input_embed_content))
         # input_embed_content = input_embed_content.view(batch_size, seqlen, -1)
 
-        predict_input = torch.cat([all_read_value_content, input_embed_content], 2) #[b,l,mem_dim + embed_dim]
+        predict_input = torch.cat([all_read_value_content, input_embed_content], 2)  # [b,l,mem_dim + embed_dim]
         predict_input = predict_input.view(batch_size * seqlen, -1)
 
         read_content_embed = torch.tanh(self.read_embed_linear(predict_input))
 
         pred = self.predict_linear(read_content_embed)
 
-
         # predicts = torch.cat([predict_logs[i] for i in range(seqlen)], 1)
-        target_1d = target.view(-1,1)                   # [batch_size * seq_len, 1]
-        mask = target_1d.ge(0)               # [batch_size * seq_len, 1]
+        target_1d = target.view(-1, 1)  # [batch_size * seq_len, 1]
+        mask = target_1d.ge(0)  # [batch_size * seq_len, 1]
         # pred_1d = predicts.view(-1, 1)           # [batch_size * seq_len, 1]
-        pred_1d = pred.view(-1, 1)           # [batch_size * seq_len, 1]
+        pred_1d = pred.view(-1, 1)  # [batch_size * seq_len, 1]
 
         filtered_pred = torch.masked_select(pred_1d, mask)
         filtered_target = torch.masked_select(target_1d, mask)
@@ -298,7 +320,8 @@ class DKVMN_RE(nn.Module):
 
         return loss, torch.sigmoid(filtered_pred), filtered_target
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     embed_dim = 200
     q_embed_dim = 50
     qa_embed_dim = 200
@@ -309,13 +332,15 @@ if __name__=='__main__':
     max_seq_len = 200
 
     model = DKVMN_RE(n_question=pro_num,
-                  batch_size=bs,
-                  q_embed_dim=q_embed_dim,
-                  qa_embed_dim=qa_embed_dim,
-                  memory_size=20,
-                  memory_key_state_dim=q_embed_dim,
-                  memory_value_state_dim=qa_embed_dim,
-                  final_fc_dim=final_fc_dim)
+                     batch_size=bs,
+                     q_embed_dim=q_embed_dim,
+                     qa_embed_dim=qa_embed_dim,
+                     memory_size=20,
+                     memory_key_state_dim=q_embed_dim,
+                     memory_value_state_dim=qa_embed_dim,
+                     final_fc_dim=final_fc_dim)
+
+
     def count_model_parameters(model: torch.nn.Module):
         param_count = 0
         for param in model.parameters():
@@ -324,6 +349,8 @@ if __name__=='__main__':
         for buffer in model.buffers():
             param_count += buffer.nelement()
         print('model parameter number: {:.3f}M'.format(param_count / 1000000))
+
+
     def get_model_size(model: torch.nn.Module):
         param_size = 0
         for param in model.parameters():
@@ -335,38 +362,41 @@ if __name__=='__main__':
         size_all_mb = (param_size + buffer_size) / 1024 ** 2
         print('model size: {:.3f}MB'.format(size_all_mb))
 
+
     count_model_parameters(model)
     get_model_size(model)
 
-    def gen_dummy_data(q_num,s_num,bs = 64, max_seq_len = 200):
-        fake_q_seq = torch.randint(low=0,high=q_num,size = (bs,max_seq_len))
-        fake_a_seq = torch.randint(low=0,high=1,size = (bs,max_seq_len))
+
+    def gen_dummy_data(q_num, s_num, bs=64, max_seq_len=200):
+        fake_q_seq = torch.randint(low=0, high=q_num, size=(bs, max_seq_len))
+        fake_a_seq = torch.randint(low=0, high=1, size=(bs, max_seq_len))
         fake_f_seq = fake_q_seq + fake_a_seq * q_num
-        seq_len_list = [random.randint(int(max_seq_len/3),max_seq_len) for _ in range(0,bs)]
-        for idx,l in enumerate(seq_len_list):
-            fake_q_seq[idx,l:] = 0
-            fake_a_seq[idx,l:] = -1
-            fake_f_seq[idx,l:] = 0
-        fake_qs_matrix = torch.randint(low=0,high=1,size=(q_num,s_num))
-        return fake_f_seq,fake_q_seq, fake_a_seq, fake_qs_matrix
-    f_seq, q_seq , a_seq,qs_matrix = gen_dummy_data(
-        q_num=pro_num ,
+        seq_len_list = [random.randint(int(max_seq_len / 3), max_seq_len) for _ in range(0, bs)]
+        for idx, l in enumerate(seq_len_list):
+            fake_q_seq[idx, l:] = 0
+            fake_a_seq[idx, l:] = -1
+            fake_f_seq[idx, l :] = 0
+        fake_qs_matrix = torch.randint(low=0, high=1, size=(q_num, s_num))
+        return fake_f_seq, fake_q_seq, fake_a_seq, fake_qs_matrix
+
+
+    f_seq, q_seq, a_seq, qs_matrix = gen_dummy_data(
+        q_num=pro_num,
         s_num=memory_size,
-        bs = bs,
+        bs=bs,
         max_seq_len=max_seq_len
     )
-    loss1, pred1,target1 = model.forward(
+    loss1, pred1, target1 = model.forward(
         q_data=q_seq,
         qa_data=f_seq,
         target=a_seq
     )
 
-    loss2, pred2,target2 = model.forward_re(
+    loss2, pred2, target2 = model.forward_re(
         q_data=q_seq,
         qa_data=f_seq,
         target=a_seq
     )
-
 
     print(loss1)
     print(loss2)
