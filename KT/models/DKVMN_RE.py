@@ -235,17 +235,12 @@ class DKVMN_RE(nn.Module):
         input_embed_l = []
         predict_logs = []
 
-        def check_gpu_memory_allocated():
-            allocated_memory = torch.cuda.memory_allocated(device)  # Convert bytes to gigabytes
-            peak_allocated_memory = torch.cuda.max_memory_allocated(device)
-
-            print(f"Initial GPU Memory Allocated: {allocated_memory / (1024 ** 2):.2f} MB")
-            print(f"GPU Peak Memory Allocated: {peak_allocated_memory / (1024 ** 2):.2f} MB")
 
 
         qid_embed_one_hot = torch.eye(self.n_question + 1, device=device)
-        print('Init Done')
-        check_gpu_memory_allocated()
+        from KT.utils import check_gpu_memory_allocated
+        # print('Init Done')
+        # check_gpu_memory_allocated()
         for i in range(seqlen):
             ## Attention
 
@@ -255,19 +250,19 @@ class DKVMN_RE(nn.Module):
 
 
             q_one_hot = torch.nn.functional.embedding(input=qid, weight=qid_embed_one_hot)  # [batch_size,q_num+1]
-            print('Calculating Q One hot')
-            check_gpu_memory_allocated()
+            # print('Calculating Q One hot')
+            # check_gpu_memory_allocated()
 
 
             s_one_hot = q_one_hot @ qs_matrix  # [batch_size,memory_num]
 
-            print('Calculating S One hot')
-            check_gpu_memory_allocated()
+            # print('Calculating S One hot')
+            # check_gpu_memory_allocated()
 
 
             correlation_weight = self.mem.attention(q, mask=s_one_hot)
-            print('Calculating Correlation')
-            check_gpu_memory_allocated()
+            # print('Calculating Correlation')
+            # check_gpu_memory_allocated()
 
             assert not torch.any(torch.isnan(correlation_weight))
             if_memory_write = slice_q_data[i].squeeze(1).ge(1)
@@ -279,15 +274,15 @@ class DKVMN_RE(nn.Module):
             assert not torch.any(torch.isnan(read_content))
             value_read_content_l.append(read_content)
             input_embed_l.append(q)
-            print('Finish Reading')
-            check_gpu_memory_allocated()
+            # print('Finish Reading')
+            # check_gpu_memory_allocated()
             ## Write Process
             qa = slice_qa_embed_data[i].squeeze(1)
 
             new_memory_value = self.mem.write(correlation_weight, qa, if_memory_write)
-            print('Finish Writing')
-            check_gpu_memory_allocated()
-            exit(-1)
+            # print('Finish Writing')
+            # check_gpu_memory_allocated()
+
             # read_content_embed = torch.tanh(self.read_embed_linear(torch.cat([read_content, q], 1)))
             # pred = self.predict_linear(read_content_embed)
             # predict_logs.append(pred)

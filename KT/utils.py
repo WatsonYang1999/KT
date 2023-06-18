@@ -8,6 +8,15 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 
+def check_gpu_memory_allocated():
+    device = 'cuda'
+    allocated_memory = torch.cuda.memory_allocated(device)  # Convert bytes to gigabytes
+    peak_allocated_memory = torch.cuda.max_memory_allocated(device)
+
+    print(f"Initial GPU Memory Allocated: {allocated_memory / (1024 ** 2):.2f} MB")
+    print(f"GPU Peak Memory Allocated: {peak_allocated_memory / (1024 ** 2):.2f} MB")
+
+
 # divide train test set
 def train_test_split(data, split=0.8):
     n_samples = data[0].shape[0]
@@ -762,6 +771,7 @@ def load_model(args):
         model = None
         optimizer = None
         return model, optimizer
+
 
 
 if __name__ == '__main__':

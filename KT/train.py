@@ -209,7 +209,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
             if best_epoch + early_stop_interval < epoch:
                 print(f'Early Stop at epoch {epoch}!')
                 print(f'Epoch: {epoch} Best Test Set AUC Updated {best_val_auc}')
-                n_epochs = best_epoch
+                n_epochs = epoch + 1
                 break
     for metric in metrics:
         arr = np.array(logs[metric])
