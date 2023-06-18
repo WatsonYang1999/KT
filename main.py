@@ -21,7 +21,7 @@ def set_parser():
     SAKT
     SAINT
     '''
-    parser.add_argument('--model', type=str, default='DKVMN_RE', help='Model type to use, support GKT,SAKT,QGKT and DKT.')
+    parser.add_argument('--model', type=str, default='DKVMN', help='Model type to use, support GKT,SAKT,QGKT and DKT.')
     '''
     Available Dataset:
     ednet
@@ -35,8 +35,8 @@ def set_parser():
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
-    parser.add_argument('--n_epochs', type=int, default=20, help='Total Epochs.')
-    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--n_epochs', type=int, default=200, help='Total Epochs.')
+    parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--max_seq_len', type=int, default=200)
     parser.add_argument('--shuffle', type=bool, default=True)
     parser.add_argument('--cuda', type=bool, default=True)
@@ -107,6 +107,7 @@ with open(os.path.join('Log',log_file_name),'w') as f:
     f.write('-----------------------------------------------------------')
     delta_time = datetime.timestamp(time_training_end) - datetime.timestamp(time_training_end)
     f.write('Delta Time : ' + delta_time.__str__())
+    f.write('\n')
     best_epoch = -1
     best_val_auc = -1
     metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
@@ -116,6 +117,7 @@ with open(os.path.join('Log',log_file_name),'w') as f:
         if (best_val_auc-metric_i)*greater_is_better > 0:
             best_val_auc = metric_i
             best_epoch = idx
+    f.write('\n')
     for m in metrics:
         output = f"Best {metric_select} in epoch {best_epoch}: "
         for m in metrics:
