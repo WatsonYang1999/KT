@@ -3,6 +3,8 @@ import logging
 import numpy as np
 import torch
 from torch import nn
+
+
 def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda):
     model.train()
     loss_train = []
@@ -15,13 +17,12 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
         if cuda:
             features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
         if model._get_name() == 'DKT':
-
-            pred = model(features,questions,skills, labels)
+            pred = model(features, questions, skills, labels)
             loss_kt, auc, acc = loss_func(pred, labels)
         if model._get_name() == 'DKT_AUG':
 
-            pred = model(features,questions, labels,seq_len)
-            assert torch.all(pred>0)
+            pred = model(features, questions, labels, seq_len)
+            assert torch.all(pred > 0)
             loss_kt, auc, acc = loss_func(pred, labels)
         elif model._get_name() == 'DKT_PEBG':
             pred = model(questions, labels)
@@ -40,10 +41,10 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
                           for p in model.parameters())
 
             loss_kt = loss_kt + l2_lambda * l2_norm
-        elif model._get_name() in {'DKVMN','DKVMN_RE'}:
+        elif model._get_name() in {'DKVMN', 'DKVMN_RE'}:
 
-            loss_kt, filtered_pred, filtered_target = model.forward(questions, features,labels.reshape(-1, 1))
-            from sklearn.metrics import roc_auc_score ,accuracy_score
+            loss_kt, filtered_pred, filtered_target = model.forward(questions, features, labels.reshape(-1, 1))
+            from sklearn.metrics import roc_auc_score, accuracy_score
             filtered_target = filtered_target.cpu().detach().numpy()
             filtered_pred = filtered_pred.cpu().detach().numpy()
             auc = roc_auc_score(filtered_target, filtered_pred)
@@ -121,8 +122,7 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
             if cuda:
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
             if model._get_name() == 'DKT':
-
-                pred = model(features,questions, skills,labels)
+                pred = model(features, questions, skills, labels)
                 loss_kt, auc, acc = loss_func(pred, labels)
             if model._get_name() == 'DKT_AUG':
 
@@ -139,7 +139,7 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
                 pred = model(features, questions, labels)
 
                 loss_kt, auc, acc = loss_func(pred, labels)
-            elif model._get_name() in {'DKVMN','DKVMN_RE'}:
+            elif model._get_name() in {'DKVMN', 'DKVMN_RE'}:
 
                 loss_kt, filtered_pred, filtered_target = model.forward(questions, features, labels.reshape(-1, 1))
                 from sklearn.metrics import roc_auc_score, accuracy_score
@@ -192,9 +192,9 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     best_epoch = -1
     early_stop = True
     early_stop_interval = 25
-    if args.current_epochs!=0:
-        print(f"start training from previous checkpoints of epoch {args.current_epochs}")
-    for epoch in range(args.current_epochs,args.n_epochs):
+    if args.current_epoch != 0:
+        print(f"start training from previous checkpoints of epoch {args.current_epoch}")
+    for epoch in range(args.current_epoch, args.n_epochs):
         print(f"epoch: {epoch}")
 
         train_epoch(model, data_loader=data_loaders['train_loader'], optimizer=optimizer,
@@ -215,10 +215,10 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
 
             from KT.util.checkpoint import CheckpointManager
             CheckpointManager.save_checkpoint(
-                model = model,
+                model=model,
                 optimizer=optimizer,
-                epoch = epoch,
-                model_name = model._get_name(),
+                epoch=epoch,
+                model_name=model._get_name(),
                 hyperparameters=model.get_hyperparameters,
             )
 
@@ -239,7 +239,6 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
             output += m + ":  " + f"{logs[m][best_record_index]}  "
         print(output)
 
-
     import matplotlib.pyplot as plt
 
     for m in metrics:
@@ -248,6 +247,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # plt.show()
     # plot some figures here
     return logs
+
 
 def test(model: nn.Module, data_loader, optimizer, loss_func, n_epochs, cuda=True):
     model.eval()
