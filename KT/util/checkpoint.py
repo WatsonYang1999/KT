@@ -1,14 +1,14 @@
 import os
 
 import torch
-
+from KT.models.SAKT import SAKT
 
 class CheckpointManager:
     def __init__(self, save_dir='checkpoints'):
         self.save_dir = save_dir
 
     @staticmethod
-    def save_checkpoint(model, optimizer, epoch, model_name, dataset_name, hyperparameters, extra_info=None,
+    def save_checkpoint(model, optimizer, epoch, model_name, dataset, hyperparameters, extra_info=None,
                         save_dir='checkpoints'):
         """
         Save a checkpoint of the model and optimizer.
@@ -18,7 +18,7 @@ class CheckpointManager:
             optimizer (torch.optim.Optimizer): The optimizer to save.
             epoch (int): The current training epoch.
             model_name (str): A name or identifier for the model.
-            dataset_name (str): A name or identifier for the dataset.
+            dataset (str): A name or identifier for the dataset.
             hyperparameters (dict): A dictionary containing hyperparameter settings.
             extra_info (str, optional): Additional information to include in the checkpoint name.
             save_dir (str, optional): Directory to save the checkpoints. Default is 'checkpoints'.
@@ -26,17 +26,17 @@ class CheckpointManager:
         # Construct a string representation of hyperparameters
         hyperparam_str = "_".join([f"{key}_{value}" for key, value in hyperparameters.items()])
 
-        checkpoint_dir = os.path.join(save_dir, model_name, dataset_name, hyperparam_str)
+        checkpoint_dir = os.path.join(save_dir, model_name, dataset)
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
 
-        checkpoint_name = f'epoch{epoch}'
+        checkpoint_name = hyperparam_str
         if extra_info:
             checkpoint_name += f'_{extra_info}'
         checkpoint_name += '.pth'
 
         checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
-
+        print(checkpoint_path)
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -70,7 +70,7 @@ class CheckpointManager:
         return model, optimizer, epoch, hyperparameters
 
     @staticmethod
-    def load_checkpoint_by_hyperparameters(model, optimizer, directory, hyperparameters):
+    def load_checkpoint_by_hyperparameters(model, optimizer, directory, model_name, dataset, hyperparameters):
         """
         Load a checkpoint from a directory based on hyperparameter settings.
 
@@ -87,6 +87,7 @@ class CheckpointManager:
         # Construct a string representation of hyperparameters to match checkpoint filenames
         hyperparam_str = "_".join([f"{key}_{value}" for key, value in hyperparameters.items()])
 
+        directory = os.path.join(directory, model_name, dataset)
         # List checkpoint files in the directory
         checkpoint_files = os.listdir(directory)
 
@@ -108,16 +109,36 @@ class CheckpointManager:
 
             return model, optimizer, epoch
         else:
+            print("Failed to load")
             return "Failed to load", None, None
 
-if __name__=='__main__':
-    checkpoint_manager = CheckpointManager()
-    model = YourModelClass()  # Replace with your model class
-    optimizer = YourOptimizerClass()  # Replace with your optimizer class
-    hyperparameters_to_load = {'A': 1, 'B': 2, 'C': 3}
+if __name__ == '__main__':
 
-    loaded_model, loaded_optimizer, loaded_epoch = checkpoint_manager.load_checkpoint(model, optimizer, 'checkpoints',
-                                                                                      hyperparameters_to_load)
+    checkpoint_manager = CheckpointManager()
+    model = SAKT(q_num=100, seq_len=200, embed_dim=50, heads=1,
+                 dropout=0.2)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    hyperparameters_to_load = model.get_hyperparameters()
+
+    CheckpointManager.save_checkpoint(
+        model=model,
+        model_name='SAKT-Demo',
+        dataset='KT-Dataset-Demo',
+        optimizer=optimizer,
+        epoch=10,
+        hyperparameters=model.get_hyperparameters(),
+        save_dir='../../Checkpoints'
+    )
+    model = SAKT(q_num=1001, seq_len=200, embed_dim=50, heads=1,
+                 dropout=0.2)
+    loaded_model, loaded_optimizer, loaded_epoch = CheckpointManager.load_checkpoint_by_hyperparameters(
+        model=model,
+        optimizer=optimizer,
+        model_name='SAKT-Demo',
+        dataset='KT-Dataset-Demo',
+        directory='../../Checkpoints',
+        hyperparameters=model.get_hyperparameters()
+    )
 
     if loaded_model == "Failed to load":
         print("Checkpoint not found.")
