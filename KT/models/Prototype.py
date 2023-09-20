@@ -21,7 +21,6 @@ class DKVMNHeadGroup(nn.Module):
             nn.init.constant_(self.erase.bias, 0)
             nn.init.constant_(self.add.bias, 0)
 
-
     def addressing(self, control_input, memory):
         """
         Parameters
@@ -32,7 +31,6 @@ class DKVMNHeadGroup(nn.Module):
         """
         assert control_input.shape[1] == memory.shape[1]
         torch.set_printoptions(precision=2)
-
 
         similarity_score = torch.matmul(control_input, torch.t(memory)) # [b， m] ,for every q in batch ,cal similarity  with memory slot
         assert not torch.any(torch.isnan(similarity_score))
@@ -84,7 +82,6 @@ class DKVMNHeadGroup(nn.Module):
         new_memory = memory * (1 - erase_mult) + add_mul
         return new_memory
 
-
 class DKVMN_Module(nn.Module):
     def __init__(self, memory_size, memory_key_state_dim, memory_value_state_dim, init_memory_key):
         super(DKVMN_Module, self).__init__()
@@ -116,8 +113,6 @@ class DKVMN_Module(nn.Module):
         self.memory_value = memory_value
 
     def attention(self, control_input):
-
-
         correlation_weight = self.key_head.addressing(control_input=control_input, memory=self.memory_key)
         return correlation_weight
 
@@ -203,9 +198,6 @@ class DKVMN(nn.Module):
         q_embed_data = self.q_embed(q_data)   #[batch_size,seqlen,q_embed_dim]
         assert not torch.any(torch.isnan(q_embed_data))
         qa_embed_data = self.qa_embed(qa_data) #[batch_size,seqlen,qa_embed_dim]
-
-
-
 
         memory_value = nn.Parameter(torch.cat([self.init_memory_value.unsqueeze(0) for _ in range(batch_size)], 0).data)
         self.mem.init_value_memory(memory_value)

@@ -120,12 +120,21 @@ class DKT_AUG(nn.Module):
         assert torch.all(pred>0)
         return pred
 
-
-
-
+    def get_hyperparameters(self):
+        hyperparameters = {
+            'feature_dim': self.feature_dim,
+            'question_num': self.question_num,
+            'skill_num': self.skill_num,
+            'embed_dim': self.embed_dim,
+            'hidden_dim': self.hidden_dim,
+            'output_dim': self.output_dim,
+            'augment_flag': self.augment_flag,
+            'dropout': 0.2,  # Modify this as needed
+            'bias': self.bias
+        }
+        return hyperparameters
 
 class DKT(nn.Module):
-
     def __init__(self, feature_dim,embed_dim ,hidden_dim, output_dim, dropout=0.2, bias=True):
         super(DKT, self).__init__()
         self.feature_dim = feature_dim
@@ -284,6 +293,19 @@ class DKT(nn.Module):
     def forward(self, features,questions,skills,labels):
         return self.forward_without_skill(features,questions,labels)
 
+    def load(self,):
+        pass
+
+    def get_hyperparameters(self):
+        hyperparameters = {
+            'feature_dim': self.feature_dim,
+            'embed_dim': self.embed_dim,
+            'hidden_dim': self.hidden_dim,
+            'output_dim': self.output_dim,
+            'dropout': self.dropout,
+            'bias': self.bias
+        }
+        return hyperparameters
 
 class DKT_PEBG(torch.nn.Module):
     def __init__(self, pro_num, skill_num, hidden_dim, output_dim, embed_dim, p_embed_weight=None):
@@ -401,6 +423,15 @@ class DKT_PEBG(torch.nn.Module):
 
         return prob_selected
 
+    def get_hyperparameters(self):
+        hyperparameters = {
+            'pro_num': self.pro_num,
+            'embed_dim': self.embed_dim,
+            'hidden_dim': self.hidden_dim,
+            'output_dim': self.output_dim,
+            'dropout': 0.2  # Modify this as needed
+        }
+        return hyperparameters
 
 if __name__ == '__main__':
 

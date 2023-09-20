@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import torch
 from torch import nn
@@ -180,7 +182,7 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
         logs['val_acc'].append(np.mean(acc_val))
 
 
-def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=True):
+def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # train loop
     metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
     logs = {}
@@ -190,26 +192,40 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
     best_epoch = -1
     early_stop = True
     early_stop_interval = 25
-    for epoch in range(n_epochs):
+    if args.current_epochs!=0:
+        print(f"start training from previous checkpoints of epoch {args.current_epochs}")
+    for epoch in range(args.current_epochs,args.n_epochs):
         print(f"epoch: {epoch}")
 
         train_epoch(model, data_loader=data_loaders['train_loader'], optimizer=optimizer,
-                    loss_func=loss_func, logs=logs, cuda=cuda)
+                    loss_func=loss_func, logs=logs, cuda=args.cuda)
 
         val_epoch(model, data_loader=data_loaders['test_loader'], optimizer=optimizer,
-                  loss_func=loss_func, logs=logs, cuda=cuda)
+                  loss_func=loss_func, logs=logs, cuda=args.cuda)
         if max(logs['val_auc']) > best_val_auc:
             best_val_auc = max(logs['val_auc'])
             best_epoch = epoch
-
-
-
             print(f'Epoch: {epoch} Best Test Set AUC Updated {best_val_auc}')
+            """
+                We are going to save checkpoints here
+                
+                1. checkpoint path
+                2. checkpoint file name
+            """
+
+            from KT.util.checkpoint import CheckpointManager
+            CheckpointManager.save_checkpoint(
+                model = model,
+                optimizer=optimizer,
+                epoch = epoch,
+                model_name = model._get_name(),
+                hyperparameters=model.get_hyperparameters,
+            )
+
         if early_stop:
             if best_epoch + early_stop_interval < epoch:
                 print(f'Early Stop at epoch {epoch}!')
                 print(f'Epoch: {epoch} Best Test Set AUC Updated {best_val_auc}')
-                n_epochs = epoch + 1
                 break
     for metric in metrics:
         arr = np.array(logs[metric])
@@ -227,7 +243,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, n_epochs, cuda=T
     import matplotlib.pyplot as plt
 
     for m in metrics:
-        plt.plot(np.arange(0, n_epochs, dtype=int), logs[m], label=m)
+        plt.plot(np.arange(0, args.n_epochs, dtype=int), logs[m], label=m)
     plt.legend(loc="upper left", shadow=True, title=model._get_name(), fancybox=True)
     # plt.show()
     # plot some figures here
