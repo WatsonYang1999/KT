@@ -672,6 +672,7 @@ def load_model(args):
             model, optimizer = load_checkpoint(model, optimizer, args.checkpoint_dir)
         return model, optimizer
     elif args.model == 'SAKT':
+        ## why this part is not updated in remote repo?
         from KT.models.SAKT import SAKT
         model = SAKT(q_num=args.q_num, seq_len=args.max_seq_len, embed_dim=args.embed_dim, heads=5,
                      dropout=args.dropout)
