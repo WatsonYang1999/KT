@@ -3,8 +3,8 @@ import json
 import numpy as np
 import torch
 import os
-from KT.KTDataloader import KTDataset
-from torch import nn
+from KT import KTDataloader
+from KTDataloader import KTDataset
 from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 
@@ -47,7 +47,6 @@ def load_assist09_q(args):
     test_set = KTDataset(args.q_num, args.s_num, test_problem, test_skill, test_y, test_real_len,
                          max_seq_len=args.max_seq_len)
     if args.data_augment:
-
         print('Use Data Augmentation')
         train_set.augment()
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
@@ -487,7 +486,7 @@ def load_ednet_qs(args):
     data_shuffle = False
     with open('Dataset/ednet/pro_id_dict.txt', 'r') as f:
         pro_id_dict = eval(f.read())
-        #print(pro_id_dict)
+        # print(pro_id_dict)
         '''
         人为规定问题编号始终从1开始
         '''
@@ -500,7 +499,7 @@ def load_ednet_qs(args):
         assert min(q_id_list) > 0
     with open('Dataset/ednet/pro_skill_dict.txt', 'r') as f:
         pro_skill_dict = eval(f.read())
-        #print(pro_skill_dict)
+        # print(pro_skill_dict)
         args.s_num = -1
         for k, v in pro_skill_dict.items():
             '''
@@ -516,7 +515,7 @@ def load_ednet_qs(args):
     Calculate qs_matrix
     '''
     qs_matrix = np.zeros((args.q_num + 1, args.s_num + 1))
-    #print(qs_matrix.shape)
+    # print(qs_matrix.shape)
     for k, v in pro_skill_dict.items():
         '''
         skills are in the format of 'a,b,c'
@@ -526,7 +525,7 @@ def load_ednet_qs(args):
         q_id = pro_id_dict[k]
         for s_id in skills:
             qs_matrix[q_id, s_id] = 1
-    #print(qs_matrix)
+    # print(qs_matrix)
     question_list = []
     answer_list = []
     seq_len_list = []
@@ -579,7 +578,7 @@ def load_ednet_qs(args):
                            skills=skills, answers=answers, seq_len=seq_len, max_seq_len=args.max_seq_len)
 
     dataset_size = len(kt_dataset)
-    #print(f'Dataset Size: {dataset_size}')
+    # print(f'Dataset Size: {dataset_size}')
 
     train_size = int(ratio[0] * dataset_size)
     test_size = dataset_size - train_size
@@ -772,7 +771,6 @@ def load_model(args):
         model = None
         optimizer = None
         return model, optimizer
-
 
 
 if __name__ == '__main__':
