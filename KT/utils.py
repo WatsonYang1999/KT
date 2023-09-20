@@ -672,7 +672,7 @@ def load_model(args):
             model, optimizer = load_checkpoint(model, optimizer, args.checkpoint_dir)
         return model, optimizer
     elif args.model == 'SAKT':
-        from models.SAKT import SAKT
+        from KT.models.SAKT import SAKT
         model = SAKT(q_num=args.q_num, seq_len=args.max_seq_len, embed_dim=args.embed_dim, heads=5,
                      dropout=args.dropout)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
