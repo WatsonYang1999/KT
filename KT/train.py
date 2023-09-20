@@ -219,8 +219,8 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
                 optimizer=optimizer,
                 dataset=args.dataset,
                 epoch=epoch,
-                model_name=model._get_name(),
-                hyperparameters=model.get_hyperparameters,
+                model_name=args.model,
+                hyperparameters=model.get_hyperparameters(),
             )
 
         if early_stop:
