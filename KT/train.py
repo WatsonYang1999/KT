@@ -217,6 +217,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
             CheckpointManager.save_checkpoint(
                 model=model,
                 optimizer=optimizer,
+                dataset_name=args.dataset,
                 epoch=epoch,
                 model_name=model._get_name(),
                 hyperparameters=model.get_hyperparameters,
