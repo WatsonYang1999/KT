@@ -672,7 +672,7 @@ def load_model(args):
     elif args.model == 'SAKT':
         ## why this part is not updated in remote repo?
         from KT.models.SAKT import SAKT
-        model = SAKT(q_num=args.q_num, seq_len=args.max_seq_len, embed_dim=args.embed_dim, heads=5,
+        model = SAKT(q_num=args.q_num, seq_len=args.max_seq_len, embed_dim=args.embed_dim, heads=1,
                      dropout=args.dropout)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
         return model, optimizer
