@@ -17,4 +17,4 @@ REM Push the changes to the remote repository
 git push -u origin main
 
 REM Example of using this file
-REM batch_script.bat --model DKT_AUG --dataset ednet_qs --batch_size 16
+REM batch_script.bat --model DKT_AUG --dataset ednet_qs --batch_size 16 --n_epochs 1
