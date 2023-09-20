@@ -96,6 +96,15 @@ class SAKT(nn.Module):
     def input_reformat(self,q_num,s_num,question,skill,label,seq_len):
         pass
 
+    def get_hyperparameters(self):
+        hyperparameters = {
+            'q_num': self.embd_qa.num_embeddings,
+            'seq_len': self.seq_len,
+            'embed_dim': self.dim,
+            'heads': self.attn.num_heads,
+            'dropout': self.drop.p,
+        }
+        return hyperparameters
 if __name__ == '__main__':
     def randomdata():
         input_in = torch.randint(0, 49, (64, 12))
