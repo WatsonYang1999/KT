@@ -3,8 +3,7 @@ import json
 import numpy as np
 import torch
 import os
-from KT import KTDataloader
-from KTDataloader import KTDataset
+from KT.KTDataloader import KTDataset
 from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 
