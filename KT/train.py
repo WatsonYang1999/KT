@@ -104,7 +104,6 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     logs['train_acc'].append(np.mean(acc_train))
     return model, optimizer
 
-
 def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=False):
     model.eval()
     loss_val = []
@@ -214,6 +213,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
             """
 
             from KT.util.checkpoint import CheckpointManager
+
             CheckpointManager.save_checkpoint(
                 model=model,
                 optimizer=optimizer,

@@ -7,14 +7,12 @@ import numpy as np
 
 random_seed = 42
 
-
 def build_dense_graph(node_num):
     print(node_num)
     graph = 1. / (node_num - 1) * np.ones((node_num, node_num))
     np.fill_diagonal(graph, 0)
     graph = torch.from_numpy(graph).float()
     return graph
-
 
 class KTDataset(Dataset):
     def __init__(self, q_num,s_num,questions, skills,answers,seq_len,max_seq_len):
@@ -240,22 +238,17 @@ def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50,data_
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=data_shuffle, collate_fn=pad_collate)
     test_loader = DataLoader(test_set, batch_size=1, shuffle=data_shuffle, collate_fn=pad_collate)
 
-
-
     print(train_loader)
     print(test_loader)
     return train_loader,test_loader
 
-
 import numpy as np
-
 
 def is_ascending(seq):
     if len(seq) == 1: return False
     for i in range(0, len(seq) - 1):
         if seq[i] > seq[i - 1]: return False
     return True
-
 
 def preprocess():
     csv_path = "/Users/watsonyang/PycharmProjects/MyKT/Dataset/assist2009_updated/assist2009_updated_test.csv"
