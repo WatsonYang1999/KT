@@ -35,6 +35,10 @@ class AKT(nn.Module):
         self.l2 = l2
         self.model_type = model_type
         self.separate_qa = separate_qa
+        self.n_blocks = n_blocks
+        self.n_heads = n_heads
+        self.final_fc_dim = final_fc_dim
+        self.d_ff = d_ff
         embed_l = d_model
         self.n_pid = -1
         if self.n_pid > 0:
