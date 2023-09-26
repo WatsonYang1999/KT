@@ -110,7 +110,6 @@ class AKT(nn.Module):
         hyperparameters = {
             'n_question': self.n_question,
             'n_pid': self.n_pid,
-            'd_model': self.d_model,
             'n_blocks': self.n_blocks,
             'kq_same': self.kq_same,
             'dropout': self.dropout,
