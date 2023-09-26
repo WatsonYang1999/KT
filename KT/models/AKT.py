@@ -106,6 +106,23 @@ class AKT(nn.Module):
         output = torch.sigmoid(output)
         return output.clone()[:,:-1]
 
+    def get_hyperparameters(self):
+        hyperparameters = {
+            'n_question': self.n_question,
+            'n_pid': self.n_pid,
+            'd_model': self.d_model,
+            'n_blocks': self.n_blocks,
+            'kq_same': self.kq_same,
+            'dropout': self.dropout,
+            'model_type': self.model_type,
+            'final_fc_dim': self.final_fc_dim,
+            'n_heads': self.n_heads,
+            'd_ff': self.d_ff,
+            'l2': self.l2,
+            'separate_qa': self.separate_qa
+        }
+        return hyperparameters
+
 
 class Architecture(nn.Module):
     def __init__(self, n_question,  n_blocks, d_model, d_feature,
