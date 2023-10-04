@@ -81,16 +81,12 @@ args = parser.parse_args()
 args.cuda = torch.cuda.is_available()
 args.checkpoint_dir = os.path.join(os.getcwd(),'checkpoints')
 
-assert args.train_from_scratch is not True
 # load dataset
 data_loaders = load_dataset(args)
 
 def reformat_datatime(dt: datetime):
     formatted_time = dt.strftime("%y-%m-%d_%H-%M-%S")
     return formatted_time
-
-
-
 
 train_loader = data_loaders['train_loader']
 test_loader = data_loaders['test_loader']
