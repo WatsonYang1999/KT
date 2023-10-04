@@ -450,9 +450,6 @@ def load_junyi2(args):
 
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
-
-
-
 def load_dataset(args):
     if args.dataset == 'assist09-q':
 
@@ -485,7 +482,6 @@ def load_dataset(args):
     #     s_graph = np.load(dataset_info['s_graph'])
     pass
 
-
 def load_model(args):
     def load_checkpoint(model, optimizer, checkpoint_PATH):
         model_CKPT = torch.load(checkpoint_PATH)
@@ -495,6 +491,25 @@ def load_model(args):
         return model, optimizer
     model = None
     optimizer = None
+    assert args.checkpoint_dir is not None
+    assert args.train_from_scratch is not True
+    if args.checkpoint_dir is not None and args.train_from_scratch is not True:
+        print("here")
+        model, optimizer = load_checkpoint(model, optimizer, args.checkpoint_dir)
+        from KT.util.checkpoint import CheckpointManager
+        model, optimizer, args.current_epochs = CheckpointManager.load_checkpoint_by_hyperparameters(
+            model,
+            optimizer,
+            args.checkpoint_dir,
+            model.get_hyperparameters()
+        )
+
+        assert model != "Failed to load"
+        print(f"Successfully load checkpoint {args.checkpoint_dir} from epoch {args.current_epochs}")
+        return model, optimizer
+    else:
+        exit(-1)
+
     if args.model == 'DKT':
         from KT.models.DKT import DKT
         model = DKT(feature_dim=2 * args.q_num + 1,
@@ -628,17 +643,6 @@ def load_model(args):
     else:
         pass
 
-    if args.checkpoint_dir is not None and args.train_from_scratch is not True:
-        model, optimizer = load_checkpoint(model, optimizer, args.checkpoint_dir)
-        from KT.util.checkpoint import CheckpointManager
-        model, optimizer, args.current_epochs = CheckpointManager.load_checkpoint_by_hyperparameters(
-            model,
-            optimizer,
-            args.checkpoint_dir,
-            model.get_hyperparameters()
-        )
-        assert model != "Failed to load"
-    return model, optimizer
 
 if __name__ == '__main__':
     load_buaa()

@@ -12,7 +12,6 @@ import logging
 
 time_program_begin = datetime.now()
 
-
 def set_parser():
     parser = argparse.ArgumentParser()
     '''
@@ -36,9 +35,10 @@ def set_parser():
     '''
     parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
     # parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
+    
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
-    parser.add_argument('--train_from_scratch', type=bool, default=True,
+    parser.add_argument('--train_from_scratch', type=bool, default=False,
                         help='If you need to retrain the model from scratch')
 
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
@@ -76,8 +76,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = set_parser()
 args = parser.parse_args()
 args.cuda = torch.cuda.is_available()
-args.checkpoint_dir = os.path.join(os.getcwd(),'Checkpoints')
+args.checkpoint_dir = os.path.join(os.getcwd(),'checkpoints')
 
+assert args.train_from_scratch is not True
 # load dataset
 data_loaders = load_dataset(args)
 
