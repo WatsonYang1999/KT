@@ -24,6 +24,14 @@ class CheckpointManager:
             save_dir (str, optional): Directory to save the checkpoints. Default is 'checkpoints'.
         """
         # Construct a string representation of hyperparameters
+        for k,v in hyperparameters.items():
+            try:
+                number = float(v)
+                formatted_content = "{:.0f}".format(number)
+
+            except ValueError:
+                formatted_content = v
+            hyperparameters[k] = formatted_content
         hyperparam_str = "-".join([f"{key}-{value}" for key, value in hyperparameters.items()])
 
         checkpoint_dir = os.path.join(save_dir, model_name, dataset)
