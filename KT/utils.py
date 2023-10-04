@@ -491,24 +491,7 @@ def load_model(args):
         return model, optimizer
     model = None
     optimizer = None
-    assert args.checkpoint_dir is not None
-    assert args.train_from_scratch is not True
-    if args.checkpoint_dir is not None and args.train_from_scratch is not True:
-        print("here")
-        model, optimizer = load_checkpoint(model, optimizer, args.checkpoint_dir)
-        from KT.util.checkpoint import CheckpointManager
-        model, optimizer, args.current_epochs = CheckpointManager.load_checkpoint_by_hyperparameters(
-            model,
-            optimizer,
-            args.checkpoint_dir,
-            model.get_hyperparameters()
-        )
 
-        assert model != "Failed to load"
-        print(f"Successfully load checkpoint {args.checkpoint_dir} from epoch {args.current_epochs}")
-        return model, optimizer
-    else:
-        exit(-1)
 
     if args.model == 'DKT':
         from KT.models.DKT import DKT
@@ -565,7 +548,6 @@ def load_model(args):
         model.init_embeddings()
         model.init_params()
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-        return model, optimizer
     elif args.model == 'DKVMN_RE':
         from KT.models.DKVMN_RE import DKVMN_RE
         q_embed_dim = args.embed_dim
@@ -583,7 +565,6 @@ def load_model(args):
         model.init_embeddings()
         model.init_params()
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-        return model, optimizer
     elif args.model == 'AKT':
         from KT.models.AKT import AKT
         print(args.q_num)
@@ -591,7 +572,6 @@ def load_model(args):
                     dropout=0.05, kq_same=1, model_type='akt', l2=1e-5)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-        return model, optimizer
     elif args.model == 'SAINT':
         from KT.models.SAINT import saint
         # TODO : Update SAINT Model
@@ -624,7 +604,6 @@ def load_model(args):
                     graph_model=graph_model,
                     dropout=args.dropout, has_cuda=torch.cuda.is_available())
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-        return model, optimizer
     elif args.model == 'QGKT':
         from models.QGKT import QGKT
 
@@ -639,9 +618,26 @@ def load_model(args):
                      embedding_dim=args.embed_dim,
                      qs_matrix=args.qs_matrix, s_graph=s_graph_gen(args.s_num))
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-        return model, optimizer
     else:
         pass
+    assert args.checkpoint_dir is not None
+    assert args.train_from_scratch is not True
+    if args.checkpoint_dir is not None and args.train_from_scratch is not True:
+        print("here")
+        from KT.util.checkpoint import CheckpointManager
+        model, optimizer, args.current_epochs = CheckpointManager.load_checkpoint_by_hyperparameters(
+            model = model,
+            optimizer = optimizer,
+            directory=args.checkpoint_dir,
+            model_name = args.model,
+            dataset = args.dataset,
+            hyperparameters = model.get_hyperparameters()
+        )
+
+        assert model != "Failed to load"
+        print(f"Successfully load checkpoint {args.checkpoint_dir} from epoch {args.current_epochs}")
+
+    return model, optimizer
 
 
 if __name__ == '__main__':
