@@ -620,8 +620,6 @@ def load_model(args):
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     else:
         pass
-    assert args.checkpoint_dir is not None
-    assert args.train_from_scratch is not True
     if args.checkpoint_dir is not None and args.train_from_scratch is not True:
         print("here")
         from KT.util.checkpoint import CheckpointManager
