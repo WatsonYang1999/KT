@@ -24,7 +24,7 @@ class CheckpointManager:
             save_dir (str, optional): Directory to save the checkpoints. Default is 'checkpoints'.
         """
         # Construct a string representation of hyperparameters
-        hyperparam_str = "_".join([f"{key}_{value}" for key, value in hyperparameters.items()])
+        hyperparam_str = "-".join([f"{key}-{value}" for key, value in hyperparameters.items()])
 
         checkpoint_dir = os.path.join(save_dir, model_name, dataset)
         if not os.path.exists(checkpoint_dir):
@@ -32,7 +32,7 @@ class CheckpointManager:
 
         checkpoint_name = hyperparam_str
         if extra_info:
-            checkpoint_name += f'_{extra_info}'
+            checkpoint_name += f'-{extra_info}'
         checkpoint_name += '.pth'
 
         checkpoint_path = os.path.join(checkpoint_dir, checkpoint_name)
@@ -85,7 +85,7 @@ class CheckpointManager:
             or ("Failed to load", None, None) if no matching checkpoint is found.
         """
         # Construct a string representation of hyperparameters to match checkpoint filenames
-        hyperparam_str = "_".join([f"{key}_{value}" for key, value in hyperparameters.items()])
+        hyperparam_str = "-".join([f"{key}-{value}" for key, value in hyperparameters.items()])
 
         directory = os.path.join(directory, model_name, dataset)
         # List checkpoint files in the directory
