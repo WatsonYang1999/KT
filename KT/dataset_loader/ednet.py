@@ -2,7 +2,7 @@ import numpy as np
 import os
 from KT.KTDataloader import KTDataset
 from KT.utils import train_test_split
-from torch.utils.data import DataLoader, Dataset, random_split, Subset
+from torch.utils.data import DataLoader, random_split
 
 
 def load_ednet(args):
@@ -113,8 +113,6 @@ def load_ednet_qs(args):
         [101, 77, 86, 113, 99, 77, 123, 134, 106, 119]
         [4887, 8274, 9335, 6163, 5504, 6424, 4431, 5087, 4644, 4756]
         [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
-
-
         '''
         for idx, line in enumerate(lines):
             line = line[1:-2]
