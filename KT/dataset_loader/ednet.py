@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader, Dataset, random_split, Subset
 
 
 def load_ednet(args):
-    data_dir = 'Dataset\\' + args.dataset
+    data_dir = os.path.join('Dataset',args.dataset)
     data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
     y, skill, problem, real_len = data['y'], data['skill'], data['problem'], data['real_len']
 
@@ -32,7 +32,7 @@ def load_ednet(args):
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
 def load_ednet(args):
-    data_dir = 'Dataset\\' + args.dataset
+    data_dir = os.path.join('Dataset',args.dataset)
     data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
     y, skill, problem, real_len = data['y'], data['skill'], data['problem'], data['real_len']
 
