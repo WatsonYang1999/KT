@@ -33,12 +33,15 @@ def set_parser():
     assist09-s
     assist17-s
     '''
+
+    def str_to_bool(s):
+        return s.lower() == 'true'
     parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
     # parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
     
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
-    parser.add_argument('--train_from_scratch', type=bool, default=False,
+    parser.add_argument('--train_from_scratch', type=str_to_bool, default=False,
                         help='If you need to retrain the model from scratch')
 
     parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
@@ -47,7 +50,7 @@ def set_parser():
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--max_seq_len', type=int, default=200)
     parser.add_argument('--shuffle', type=bool, default=True)
-    parser.add_argument('--cuda', type=bool, default=True)
+    parser.add_argument('--cuda', type=str_to_bool, default=True)
     # some model hyper-parameters
 
     parser.add_argument('--hidden_dim', type=int, default=50, help='')
@@ -63,7 +66,7 @@ def set_parser():
     parser.add_argument('--s_num', type=int, default=-1, help='')
     parser.add_argument('--q_num', type=int, default=-1, help='')
 
-    parser.add_argument('--data_augment', type=bool, default=False, help='')
+    parser.add_argument('--data_augment', type=str_to_bool, default=False, help='')
     parser.add_argument('--pretrain', type=str, default='load', help='scratch or load or no')
     parser.add_argument('--pretrain_embed_file', type=str, default='', help='path of the pretrain weight file')
 
