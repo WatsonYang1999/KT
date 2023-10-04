@@ -86,7 +86,18 @@ def reformat_datatime(dt: datetime):
     return formatted_time
 
 
-
+log_file_name = '-'.join([args.dataset.__str__(),
+                          args.model.__str__(),
+                          reformat_datatime(time_program_begin)]) + '.txt'
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Output logs to the console
+        logging.FileHandler(os.path.join('Log', log_file_name))
+    ]
+)
+logging.info(args.__str__())
 
 train_loader = data_loaders['train_loader']
 test_loader = data_loaders['test_loader']
@@ -116,43 +127,29 @@ log_file_name = '-'.join([args.dataset.__str__(),
                           reformat_datatime(time_program_begin)]) + '.txt'
 
 # config the log content here
-def log_train(args):
-    log_file_name = '-'.join([args.dataset.__str__(),
-                              args.model.__str__(),
-                              reformat_datatime(time_program_begin)]) + '.txt'
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s [%(levelname)s] %(message)s',
-        handlers=[
-            logging.StreamHandler(),  # Output logs to the console
-            logging.FileHandler(os.path.join('Log', log_file_name))
-        ]
-    )
-    logging.info(args.__str__())
-    logging.info(args.__str__())
-    logging.info('-----------------------------------------------------------')
-    delta_time = datetime.timestamp(time_training_end) - datetime.timestamp(time_training_end)
-    logging.info('Delta Time : ' + delta_time.__str__())
-    logging.info('\n')
-    best_epoch = -1
-    best_val_auc = -1
-    metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
-    metric_select = 'val_auc'
-    greater_is_better = 1
-    for idx, metric_i in enumerate(logs[metric_select]):
-        if (best_val_auc - metric_i) * greater_is_better > 0:
-            best_val_auc = metric_i
-            best_epoch = idx
+logging.info(args.__str__())
+logging.info('-----------------------------------------------------------')
+delta_time = datetime.timestamp(time_training_end) - datetime.timestamp(time_training_end)
+logging.info('Delta Time : ' + delta_time.__str__())
+logging.info('\n')
+best_epoch = -1
+best_val_auc = -1
+metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
+metric_select = 'val_auc'
+greater_is_better = 1
+for idx, metric_i in enumerate(logs[metric_select]):
+    if (best_val_auc - metric_i) * greater_is_better > 0:
+        best_val_auc = metric_i
+        best_epoch = idx
+for m in metrics:
+    output = f"Best {metric_select} in epoch {best_epoch}: "
     for m in metrics:
-        output = f"Best {metric_select} in epoch {best_epoch}: "
-        for m in metrics:
-            output += m + ":  " + f"{logs[m][best_epoch]}  "
-        logging.info(output)
+        output += m + ":  " + f"{logs[m][best_epoch]}  "
+    logging.info(output)
 
-    logging.info('-----------------------------------------------------------')
-    logging.info(str(logs))
+logging.info('-----------------------------------------------------------')
+logging.info(str(logs))
 
-log_train(args)
 # save training log, including essential config: dataset , model hyperparameters, best metrics
 
 # test model
