@@ -50,7 +50,7 @@ def set_parser():
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--max_seq_len', type=int, default=200)
     parser.add_argument('--shuffle', type=bool, default=True)
-    parser.add_argument('--cuda', type=str_to_bool, default=True)
+    parser.add_argument('--cuda', type=str_to_bool, default='True')
     # some model hyper-parameters
 
     parser.add_argument('--hidden_dim', type=int, default=50, help='')
@@ -102,6 +102,7 @@ elif args.pretrain == 'load':
 
 # load model
 model, optimizer = load_model(args)
+
 model = model.to(args.device)
 kt_loss = KTLoss()
 

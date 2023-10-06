@@ -4,7 +4,6 @@ import numpy as np
 import torch
 from torch import nn
 
-
 def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda):
     model.train()
     loss_train = []
@@ -179,7 +178,6 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
         logs['val_loss'].append(np.mean(loss_val))
         logs['val_auc'].append(np.mean(auc_val))
         logs['val_acc'].append(np.mean(acc_val))
-
 
 def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # train loop

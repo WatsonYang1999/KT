@@ -631,7 +631,7 @@ def load_model(args):
             dataset = args.dataset,
             hyperparameters = model.get_hyperparameters()
         )
-
+        
         assert model != "Failed to load"
         print(f"Successfully load checkpoint {args.checkpoint_dir} from epoch {args.current_epochs}")
 
