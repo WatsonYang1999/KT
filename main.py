@@ -7,7 +7,7 @@ import torch
 
 from KT.models.Loss import KTLoss
 from KT.models.Pretrain import embedding_pretrain
-from KT.train import train
+from KT.train import train, evaluate
 from KT.utils import load_model, load_dataset, reformat_datatime
 
 
@@ -128,6 +128,7 @@ def set_logger(args):
     logging.info(args.__str__())
     logging.info('-----------------------------------------------------------')
 
+
 set_logger(args)
 
 if not args.eval:
@@ -136,6 +137,7 @@ if not args.eval:
     logs = train(model, data_loaders, optimizer, kt_loss, args)
     time_training_end = datetime.now()
     config = args
+
 
     # config the log content here
     def log_train():
@@ -161,10 +163,16 @@ if not args.eval:
         logging.info('Delta Time : ' + delta_time.__str__())
         logging.info('\n')
 
+
     log_train()
 else:
     logging.info("---------------------------evaluating---------------------------------")
-    # todo implement evaluating part
+    evaluate(
+        model=model,
+        data_loaders=data_loaders,
+        loss_func=kt_loss,
+        cuda=args.cuda
+    )
 
 # save training log, including essential config: dataset , model hyperparameters, best metrics
 

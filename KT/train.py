@@ -1,8 +1,7 @@
-import logging
-
 import numpy as np
 import torch
 from torch import nn
+
 
 def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda):
     model.train()
@@ -38,8 +37,8 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
                           for p in model.parameters())
 
             loss_kt = loss_kt + l2_lambda * l2_norm
-        elif model._get_name() in {'DKVMN', 'DKVMN_RE'}:
 
+        elif model._get_name() in {'DKVMN', 'DKVMN_RE'}:
             loss_kt, filtered_pred, filtered_target = model.forward(questions, features, labels.reshape(-1, 1))
             from sklearn.metrics import roc_auc_score, accuracy_score
             filtered_target = filtered_target.cpu().detach().numpy()
@@ -49,9 +48,7 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
             filtered_pred[filtered_pred < 0.5] = 0.0
             acc = accuracy_score(filtered_target, filtered_pred)
 
-
         elif model._get_name() == 'GKT':
-
             pred, ec_list, rec_list, z_prob_list = model(features, questions)
             loss_kt, auc, acc = loss_func(pred, labels)
         elif model._get_name() == 'SAKT':
@@ -100,6 +97,7 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     logs['train_auc'].append(np.mean(auc_train))
     logs['train_acc'].append(np.mean(acc_train))
     return model, optimizer
+
 
 def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=False):
     model.eval()
@@ -177,6 +175,7 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
         logs['val_auc'].append(np.mean(auc_val))
         logs['val_acc'].append(np.mean(acc_val))
 
+
 def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # train loop
     metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
@@ -249,9 +248,11 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # plot some figures here
     return logs
 
+
 def test(model: nn.Module, data_loader, optimizer, loss_func, n_epochs, cuda=True):
     model.eval()
     hidden_list = []
+    #ToDo: wtf does this function do?
     with torch.no_grad():
 
         for batch_idx, (features, questions, answers) in enumerate(data_loader):
@@ -276,3 +277,33 @@ def test(model: nn.Module, data_loader, optimizer, loss_func, n_epochs, cuda=Tru
     plt.show()
 
     return hidden_total
+
+def evaluate_akt(model:nn.Module, data_loaders,loss_func,cuda = False):
+
+    # evaluate the train dataset
+    loss_train = []
+    auc_train = []
+    acc_train = []
+    for batch_idx, batch in enumerate(data_loaders['train_loader']):
+        features, questions, skills, labels, seq_len = batch
+        if cuda:
+            features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
+        pred = model(questions, features, labels)
+
+        loss_kt, auc, acc = loss_func(pred, labels)
+        print(loss_kt)
+        print(auc)
+        print(acc)
+
+    # evaluate the test dataset
+
+
+
+
+def evaluate(model:nn.Module, data_loaders,loss_func,cuda = False):
+    model.eval()
+
+    with torch.no_grad():
+        if model._get_name() == 'AKT':
+            evaluate_akt(model,data_loaders,loss_func,cuda)
+
