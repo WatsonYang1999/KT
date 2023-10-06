@@ -1,18 +1,20 @@
 import argparse
-import torch
+import logging
 import os
-import numpy as np
-from KT.utils import load_model, load_dataset
-from KT.train import train, test
+from datetime import datetime
+
+import torch
+
 from KT.models.Loss import KTLoss
 from KT.models.Pretrain import embedding_pretrain
-from datetime import datetime
-import time
-import logging
+from KT.train import train
+from KT.utils import load_model, load_dataset, reformat_datatime
 
-time_program_begin = datetime.now()
 
 def set_parser():
+    def str_to_bool(s):
+        return s.lower() == 'true'
+
     parser = argparse.ArgumentParser()
     '''
     Available Models
@@ -34,18 +36,19 @@ def set_parser():
     assist17-s
     '''
 
-    def str_to_bool(s):
-        return s.lower() == 'true'
     parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
     # parser.add_argument('--dataset', type=str, default='ednet_qs', help='Dataset You Wish To Load')
-    
+
     parser.add_argument('--checkpoint_dir', type=str, default=None,
                         help='Model Parameters Directory')
     parser.add_argument('--train_from_scratch', type=str_to_bool, default=False,
                         help='If you need to retrain the model from scratch')
 
+    parser.add_argument('--eval', type=str_to_bool, default='False',
+                        help='Evaluate model to find some interesting insights')
+
     parser.add_argument('--lr', type=float, default=0.0001, help='Initial learning rate.')
-    parser.add_argument('--current_epoch',type=int, default=0)
+    parser.add_argument('--current_epoch', type=int, default=0)
     parser.add_argument('--n_epochs', type=int, default=200, help='Total Epochs.')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--max_seq_len', type=int, default=200)
@@ -75,18 +78,19 @@ def set_parser():
 
 
 torch.autograd.set_detect_anomaly(True)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 parser = set_parser()
 args = parser.parse_args()
+if args.cuda:
+    assert torch.cuda.is_available()
 args.cuda = torch.cuda.is_available()
-args.checkpoint_dir = os.path.join(os.getcwd(),'checkpoints')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+args.device = device
+
+args.checkpoint_dir = os.path.join(os.getcwd(), 'checkpoints')
 
 # load dataset
 data_loaders = load_dataset(args)
-
-def reformat_datatime(dt: datetime):
-    formatted_time = dt.strftime("%y-%m-%d_%H-%M-%S")
-    return formatted_time
 
 train_loader = data_loaders['train_loader']
 test_loader = data_loaders['test_loader']
@@ -106,21 +110,13 @@ model, optimizer = load_model(args)
 model = model.to(args.device)
 kt_loss = KTLoss()
 
-# train model
-time_training_begin = datetime.now()
-logs = train(model, data_loaders, optimizer, kt_loss, args)
-time_training_end = datetime.now()
-config = args
 
-log_file_name = '-'.join([args.dataset.__str__(),
-                          args.model.__str__(),
-                          reformat_datatime(time_program_begin)]) + '.txt'
-
-# config the log content here
-def log_train(args):
+def set_logger(args):
+    time_program_begin = datetime.now()
     log_file_name = '-'.join([args.dataset.__str__(),
                               args.model.__str__(),
                               reformat_datatime(time_program_begin)]) + '.txt'
+
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(asctime)s [%(levelname)s] %(message)s',
@@ -130,30 +126,46 @@ def log_train(args):
         ]
     )
     logging.info(args.__str__())
-    logging.info(args.__str__())
     logging.info('-----------------------------------------------------------')
-    delta_time = datetime.timestamp(time_training_end) - datetime.timestamp(time_training_end)
-    logging.info('Delta Time : ' + delta_time.__str__())
-    logging.info('\n')
-    best_epoch = -1
-    best_val_auc = -1
-    metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
-    metric_select = 'val_auc'
-    greater_is_better = 1
-    for idx, metric_i in enumerate(logs[metric_select]):
-        if (best_val_auc - metric_i) * greater_is_better > 0:
-            best_val_auc = metric_i
-            best_epoch = idx
-    for m in metrics:
-        output = f"Best {metric_select} in epoch {best_epoch}: "
-        for m in metrics:
-            output += m + ":  " + f"{logs[m][best_epoch]}  "
-        logging.info(output)
 
-    logging.info('-----------------------------------------------------------')
-    logging.info(str(logs))
+set_logger(args)
 
-log_train(args)
+if not args.eval:
+    # train model
+    time_training_begin = datetime.now()
+    logs = train(model, data_loaders, optimizer, kt_loss, args)
+    time_training_end = datetime.now()
+    config = args
+
+    # config the log content here
+    def log_train():
+        best_epoch = -1
+        best_val_auc = -1
+        metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
+        metric_select = 'val_auc'
+        greater_is_better = 1
+        for idx, metric_i in enumerate(logs[metric_select]):
+            if (best_val_auc - metric_i) * greater_is_better > 0:
+                best_val_auc = metric_i
+                best_epoch = idx
+        for _ in metrics:
+            output = f"Best {metric_select} in epoch {best_epoch}: "
+            for m in metrics:
+                output += m + ":  " + f"{logs[m][best_epoch]}  "
+            logging.info(output)
+
+        logging.info('-----------------------------------------------------------')
+        logging.info(str(logs))
+
+        delta_time = datetime.timestamp(time_training_end) - datetime.timestamp(time_training_end)
+        logging.info('Delta Time : ' + delta_time.__str__())
+        logging.info('\n')
+
+    log_train()
+else:
+    logging.info("---------------------------evaluating---------------------------------")
+    # todo implement evaluating part
+
 # save training log, including essential config: dataset , model hyperparameters, best metrics
 
 # test model
@@ -161,6 +173,5 @@ log_train(args)
 # test(model, train_loader, optimizer, kt_loss, args.n_epochs, args.cuda)
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     pass
-

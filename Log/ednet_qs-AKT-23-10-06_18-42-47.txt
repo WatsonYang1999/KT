@@ -1,0 +1,9 @@
+2023-10-06 18:42:47,650 [INFO] Namespace(batch_size=64, checkpoint_dir='/Users/watsonyang/Desktop/KT/checkpoints', cuda=False, current_epoch=2, data_augment=False, dataset='ednet_qs', device=device(type='cpu'), dropout=0.2, edge_types=2, embed_dim=128, eval=True, graph_type='Dense', hidden_dim=50, log_file='', lr=0.0001, max_seq_len=200, memory_size=20, model='AKT', n_epochs=100, output_dim=100, pretrain='load', pretrain_embed_file='Dataset/ednet_qs/embed_pretrain.npz', q_num=12372, qs_matrix=array([[0., 0., 0., ..., 0., 0., 0.],
+       [0., 1., 1., ..., 0., 0., 0.],
+       [0., 0., 1., ..., 0., 0., 0.],
+       ...,
+       [0., 0., 0., ..., 0., 0., 0.],
+       [0., 0., 0., ..., 0., 0., 0.],
+       [0., 0., 0., ..., 0., 0., 0.]]), s_num=300, shuffle=True, train_from_scratch=False)
+2023-10-06 18:42:47,650 [INFO] -----------------------------------------------------------
+2023-10-06 18:42:47,650 [INFO] ---------------------------evaluating---------------------------------

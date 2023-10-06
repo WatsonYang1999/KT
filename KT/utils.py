@@ -1,10 +1,17 @@
 import json
+import os
+from datetime import datetime
 
 import numpy as np
 import torch
-import os
+from torch.utils.data import DataLoader, random_split
+
 from KT.KTDataloader import KTDataset
-from torch.utils.data import DataLoader, Dataset, random_split, Subset
+
+
+def reformat_datatime(dt: datetime):
+    formatted_time = dt.strftime("%y-%m-%d_%H-%M-%S")
+    return formatted_time
 
 
 def check_gpu_memory_allocated():
@@ -28,6 +35,7 @@ def train_test_split(data, split=0.8):
         train_data.append(d[train_idx])
         test_data.append(d[test_idx])
     return train_data, test_data
+
 
 def load_assist09_s(args):
     dataset_path = 'Dataset/assist2009/processed_data.csv'
@@ -160,6 +168,7 @@ def load_assist09_s(args):
 
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
+
 def load_assist09_q(args):
     data_dir = 'Dataset\\' + args.dataset
     data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
@@ -187,14 +196,14 @@ def load_assist09_q(args):
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
 
-
 def load_assist17_s(args):
     pass
+
 
 def load_buaa(args):
     print("Loading Beihang1819 Dataset")
     print(args)
-    from Dataset.beihang.analyse import reload_all, load, load_qmatrix
+    from Dataset.beihang.analyse import load, load_qmatrix
     q_matrix = load_qmatrix()
     q_matrix = torch.IntTensor(q_matrix)
     q_matrix = torch.cat([torch.zeros([1, q_matrix.shape[1]]), q_matrix])
@@ -450,6 +459,7 @@ def load_junyi2(args):
 
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
+
 def load_dataset(args):
     if args.dataset == 'assist09-q':
 
@@ -482,6 +492,7 @@ def load_dataset(args):
     #     s_graph = np.load(dataset_info['s_graph'])
     pass
 
+
 def load_model(args):
     def load_checkpoint(model, optimizer, checkpoint_PATH):
         model_CKPT = torch.load(checkpoint_PATH)
@@ -489,9 +500,9 @@ def load_model(args):
         print('Loading Checkpoint!')
         optimizer.load_state_dict(model_CKPT['optimizer'])
         return model, optimizer
+
     model = None
     optimizer = None
-
 
     if args.model == 'DKT':
         from KT.models.DKT import DKT
@@ -573,7 +584,7 @@ def load_model(args):
 
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     elif args.model == 'SAINT':
-        from KT.models.SAINT import saint
+        pass
         # TODO : Update SAINT Model
         # model = saint(dim_model=128,
         #               num_en=6,
@@ -596,7 +607,7 @@ def load_model(args):
         #         vae_loss = vae_loss.cuda()
         # if args.cuda and args.graph_type in ['MHA', 'VAE']:
         #     graph_model = graph_model.cuda()
-        from models.GKT import GKT
+        from KT.models.GKT import GKT
         graph_model = None
         # graph = build_dense_graph(question_num)
         graph = None
@@ -605,7 +616,7 @@ def load_model(args):
                     dropout=args.dropout, has_cuda=torch.cuda.is_available())
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     elif args.model == 'QGKT':
-        from models.QGKT import QGKT
+        from KT.models.QGKT import QGKT
 
         def s_graph_gen(s_n):
             s_graph = np.ones((s_n, s_n))
@@ -621,22 +632,21 @@ def load_model(args):
     else:
         pass
     if args.checkpoint_dir is not None and args.train_from_scratch is not True:
-        print("here")
         from KT.util.checkpoint import CheckpointManager
-        model, optimizer, args.current_epochs = CheckpointManager.load_checkpoint_by_hyperparameters(
-            model = model,
-            optimizer = optimizer,
+        model, optimizer, args.current_epoch = CheckpointManager.load_checkpoint_by_hyperparameters(
+            model=model,
+            optimizer=optimizer,
             directory=args.checkpoint_dir,
-            model_name = args.model,
-            dataset = args.dataset,
-            hyperparameters = model.get_hyperparameters()
+            model_name=args.model,
+            dataset=args.dataset,
+            hyperparameters=model.get_hyperparameters()
         )
-        
+
         assert model != "Failed to load"
-        print(f"Successfully load checkpoint {args.checkpoint_dir} from epoch {args.current_epochs}")
+        print(f"Successfully load checkpoint {args.checkpoint_dir} from epoch {args.current_epoch}")
 
     return model, optimizer
 
 
 if __name__ == '__main__':
-    load_buaa()
+    pass

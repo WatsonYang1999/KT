@@ -9,10 +9,8 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     loss_train = []
     auc_train = []
     acc_train = []
-    assert cuda is True
     for batch_idx, batch in enumerate(data_loader):
         features, questions, skills, labels, seq_len = batch
-        assert cuda
         if cuda:
             features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
         if model._get_name() == 'DKT':
@@ -182,9 +180,12 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
 def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # train loop
     metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
-    logs = {}
-    for metric in metrics:
-        logs[metric] = []
+    if hasattr(args, 'logs'):
+        logs = args.logs
+    else:
+        logs = {}
+        for metric in metrics:
+            logs[metric] = []
     best_val_auc = -1
     best_epoch = -1
     early_stop = True
@@ -220,6 +221,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
                 model_name=args.model,
                 hyperparameters=model.get_hyperparameters(),
             )
+            # ToDo : update to save metrics record as well
 
         if early_stop:
             if best_epoch + early_stop_interval < epoch:
@@ -246,7 +248,6 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # plt.show()
     # plot some figures here
     return logs
-
 
 def test(model: nn.Module, data_loader, optimizer, loss_func, n_epochs, cuda=True):
     model.eval()

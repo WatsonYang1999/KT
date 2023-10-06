@@ -123,13 +123,16 @@ class CheckpointManager:
 
         if matching_checkpoint:
             checkpoint_path = os.path.join(directory, matching_checkpoint)
-            checkpoint = torch.load(checkpoint_path)
+            if torch.cuda.is_available():
+                checkpoint = torch.load(checkpoint_path)
+            else:
+                checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
 
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
             epoch = checkpoint['epoch']
-
+            assert epoch > 0
             return model, optimizer, epoch
         else:
             print("Failed to load")
