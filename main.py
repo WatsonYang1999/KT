@@ -44,12 +44,12 @@ def set_parser():
     parser.add_argument('--train_from_scratch', type=str_to_bool, default=False,
                         help='If you need to retrain the model from scratch')
 
-    parser.add_argument('--lr', type=float, default=0.001, help='Initial learning rate.')
+    parser.add_argument('--lr', type=float, default=0.0001, help='Initial learning rate.')
     parser.add_argument('--current_epoch',type=int, default=0)
     parser.add_argument('--n_epochs', type=int, default=200, help='Total Epochs.')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--max_seq_len', type=int, default=200)
-    parser.add_argument('--shuffle', type=bool, default=True)
+    parser.add_argument('--shuffle', type=str_to_bool, default='True')
     parser.add_argument('--cuda', type=str_to_bool, default='True')
     # some model hyper-parameters
 
@@ -66,7 +66,7 @@ def set_parser():
     parser.add_argument('--s_num', type=int, default=-1, help='')
     parser.add_argument('--q_num', type=int, default=-1, help='')
 
-    parser.add_argument('--data_augment', type=str_to_bool, default=False, help='')
+    parser.add_argument('--data_augment', type=str_to_bool, default='False', help='')
     parser.add_argument('--pretrain', type=str, default='load', help='scratch or load or no')
     parser.add_argument('--pretrain_embed_file', type=str, default='', help='path of the pretrain weight file')
 
