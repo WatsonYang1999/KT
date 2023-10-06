@@ -2,3 +2,4 @@ Dataset/junyi/processed_data.pkl
 .idea
 __pycache__
 Checkpoints
+checkpoints
