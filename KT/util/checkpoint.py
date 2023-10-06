@@ -8,6 +8,11 @@ class CheckpointManager:
         self.save_dir = save_dir
 
     @staticmethod
+    def match(file_name,parameters):
+        filename_parts = os.path.splitext(file_name)[0].split('-')
+        filename_hyperparameters = {filename_parts[i]: filename_parts[i + 1] for i in range(0, len(filename_parts), 2)}
+        return filename_hyperparameters == parameters
+    @staticmethod
     def save_checkpoint(model, optimizer, epoch, model_name, dataset, hyperparameters, extra_info=None,
                         save_dir='checkpoints'):
         """
@@ -93,6 +98,14 @@ class CheckpointManager:
             or ("Failed to load", None, None) if no matching checkpoint is found.
         """
         # Construct a string representation of hyperparameters to match checkpoint filenames
+        for k,v in hyperparameters.items():
+            try:
+                number = float(v)
+                formatted_content = "{:.0f}".format(number)
+
+            except ValueError:
+                formatted_content = v
+            hyperparameters[k] = formatted_content
         hyperparam_str = "-".join([f"{key}-{value}" for key, value in hyperparameters.items()])
 
         directory = os.path.join(directory, model_name, dataset)
@@ -100,9 +113,11 @@ class CheckpointManager:
         checkpoint_files = os.listdir(directory)
 
         # Look for a checkpoint file matching the hyperparameters
+        print(hyperparam_str)
         matching_checkpoint = None
         for checkpoint_file in checkpoint_files:
-            if hyperparam_str in checkpoint_file:
+            print(checkpoint_file)
+            if hyperparam_str == os.path.splitext(checkpoint_file)[0]:
                 matching_checkpoint = checkpoint_file
                 break
 
