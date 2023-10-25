@@ -40,7 +40,7 @@ class AKT(nn.Module):
         self.final_fc_dim = final_fc_dim
         self.d_ff = d_ff
         embed_l = d_model
-        self.n_pid = -1
+        self.n_pid = 0
         if self.n_pid > 0:
             self.difficult_param = nn.Embedding(self.n_pid+1, 1)
             self.q_embed_diff = nn.Embedding(self.n_question+1, embed_l)
@@ -83,7 +83,7 @@ class AKT(nn.Module):
             qa_embed_data = self.qa_embed(qa_data)+q_embed_data
 
         if self.n_pid > 0:
-            assert False
+
             q_embed_diff_data = self.q_embed_diff(q_data)  # d_ct
             pid_embed_data = self.difficult_param(pid_data)  # uq
             q_embed_data = q_embed_data + pid_embed_data * \
@@ -98,7 +98,7 @@ class AKT(nn.Module):
                     (qa_embed_diff_data+q_embed_diff_data)  # + uq *(h_rt+d_ct)
             c_reg_loss = (pid_embed_data ** 2.).sum() * self.l2
         else:
-            c_reg_loss = 0.
+            c_reg_loss = None
 
         # BS.seqlen,d_model
         # Pass to the decoder
@@ -108,7 +108,7 @@ class AKT(nn.Module):
         concat_q = torch.cat([d_output, q_embed_data], dim=-1)
         output = self.out(concat_q).sum(dim=-1)
         output = torch.sigmoid(output)
-        return output.clone()[:,:-1]
+        return output.clone()[:,:-1],c_reg_loss
 
     def get_hyperparameters(self):
         hyperparameters = {
@@ -311,8 +311,7 @@ def attention(q, k, v, d_k, mask, dropout, zero_pad, gamma=None):
     """
     This is called by Multi-head atention object to find the values.
     """
-    scores = torch.matmul(q, k.transpose(-2, -1)) / \
-        math.sqrt(d_k)  # BS, 8, seqlen, seqlen
+    scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)  # BS, 8, seqlen, seqlen
     bs, head, seqlen = scores.size(0), scores.size(1), scores.size(2)
 
     x1 = torch.arange(seqlen).expand(seqlen, -1).to(device)

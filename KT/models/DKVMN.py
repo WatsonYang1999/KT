@@ -174,7 +174,21 @@ class DKVMN(nn.Module):
         self.q_embed = nn.Embedding(self.n_question + 1, self.q_embed_dim, padding_idx=0)
         self.qa_embed = nn.Embedding(2 * self.n_question + 1, self.qa_embed_dim, padding_idx=0)
 
+        # add problem diff layer for experiment
+        self.difficult_param = nn.Embedding(3162+ 1, 1)
+        self.q_embed_diff = nn.Embedding(self.n_question + 1, q_embed_dim)
+        self.qa_embed_diff = nn.Embedding(2 * self.n_question + 1, qa_embed_dim)
 
+    def get_hyperparameters(self):
+        hyperparameters = {
+            'n_question': self.n_question,
+            'q_embed_dim': self.q_embed_dim,
+            'memory_size': self.memory_size,
+            'memory_key_state_dim': self.memory_key_state_dim,
+            'memory_value_state_dim': self.memory_value_state_dim,
+            'final_fc_dim': self.final_fc_dim,
+        }
+        return hyperparameters
 
     def set_qs_matrix(self, qs_matrix):
         self.mem.set_qs_matrix(qs_matrix)
@@ -193,7 +207,7 @@ class DKVMN(nn.Module):
         nn.init.kaiming_normal_(self.qa_embed.weight)
 
 
-    def forward(self, q_data, qa_data, target, student_id=None):
+    def forward(self, q_data, qa_data,pid_data, target,student_id=None):
         seqlen = q_data.shape[1]
         batch_size = q_data.shape[0]
         target_2d = target.reshape(batch_size,-1)
@@ -211,7 +225,17 @@ class DKVMN(nn.Module):
         q_embed_data = self.q_embed(q_data)   #[batch_size,seqlen,q_embed_dim]
         assert not torch.any(torch.isnan(q_embed_data))
         qa_embed_data = self.qa_embed(qa_data) #[batch_size,seqlen,qa_embed_dim]
+        if pid_data is not None:
 
+            q_embed_diff_data = self.q_embed_diff(q_data)  # d_ct
+
+            pid_embed_data = self.difficult_param(pid_data)
+            assert q_embed_data.shape == q_embed_diff_data.shape
+
+            q_embed_data = q_embed_data + pid_embed_data * q_embed_diff_data  # uq *d_ct + c_ct
+            qa_embed_diff_data = self.qa_embed_diff(
+                qa_data)
+            qa_embed_data = qa_embed_data + pid_embed_data * qa_embed_diff_data
         memory_value = nn.Parameter(torch.cat([self.init_memory_value.unsqueeze(0) for _ in range(batch_size)], 0).data)
         self.mem.init_value_memory(memory_value)
 

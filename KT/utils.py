@@ -2,11 +2,12 @@ import json
 import os
 from datetime import datetime
 
+import numpy
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
 
-from KT.KTDataloader import KTDataset
+from KT.KTDataloader import KTDataset, KTDataset_SA
 
 
 def reformat_datatime(dt: datetime):
@@ -104,7 +105,6 @@ def load_assist09_s(args):
         q_seq = question_list[i]
         a_seq = answer_list[i]
         for j in range(len(f_seq)):
-            assert f_seq[j] == a_seq[j] * question_num + q_seq[j]
             f_seq[j] = a_seq[j] * question_num + q_seq[j]
     '''
         Do some check here
@@ -168,7 +168,6 @@ def load_assist09_s(args):
 
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
-
 def load_assist09_q(args):
     data_dir = 'Dataset\\' + args.dataset
     data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
@@ -195,10 +194,45 @@ def load_assist09_q(args):
     '''
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
-
 def load_assist17_s(args):
-    pass
+    print("Loading assist 2017 skill datasets")
 
+    n_question = 102
+    n_pid = 3162
+
+    args.s_num = 102
+    args.q_num = 3162
+
+    os.chdir('C:\\Users\\12574\\Desktop\\KT-Refine')
+    data_path = os.path.join("Dataset","assist2017_pid","assist2017_pid.csv")
+    from KT.dataset_loader.assist_17 import PID_DATA
+    dat = PID_DATA(n_question=n_question,
+                   seqlen=args.max_seq_len, separate_char=',')
+
+    q_data, qa_data, pid = dat.load_data(data_path)
+
+    skill = q_data.astype(int)
+    y = (qa_data>args.s_num * numpy.ones_like(qa_data)).astype(int)
+
+    problem = pid.astype(int)
+    real_len = (q_data>numpy.zeros_like(q_data)).sum(axis=1).astype(int)
+
+    train_data, test_data = train_test_split([y, skill, problem, real_len])
+
+    train_y, train_skill, train_problem, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
+    test_y, test_skill, test_problem, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
+    args.q_num = max(np.max(train_problem), np.max(test_problem))
+    assert args.q_num == 3162
+
+    train_set = KTDataset_SA(args.q_num, args.s_num, train_problem, train_skill, train_y, train_real_len,
+                          max_seq_len=args.max_seq_len)
+    test_set = KTDataset_SA(args.q_num, args.s_num, test_problem, test_skill, test_y, test_real_len,
+                         max_seq_len=args.max_seq_len)
+
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
+
+    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
 def load_buaa(args):
     print("Loading Beihang1819 Dataset")
@@ -509,7 +543,7 @@ def load_model(args):
         model = DKT(feature_dim=2 * args.q_num + 1,
                     embed_dim=args.embed_dim,
                     hidden_dim=args.hidden_dim,
-                    output_dim=args.q_num)
+                    output_dim=args.q_num+1)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     if args.model == 'DKT_AUG':
@@ -579,7 +613,7 @@ def load_model(args):
     elif args.model == 'AKT':
         from KT.models.AKT import AKT
         print(args.q_num)
-        model = AKT(n_question=args.q_num, n_pid=args.q_num, n_blocks=1, d_model=256,
+        model = AKT(n_question=args.s_num, n_pid=args.q_num, n_blocks=1, d_model=256,
                     dropout=0.05, kq_same=1, model_type='akt', l2=1e-5)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -649,4 +683,4 @@ def load_model(args):
 
 
 if __name__ == '__main__':
-    pass
+    load_assist09_s(None)

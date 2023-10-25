@@ -1,4 +1,4 @@
-
+import numpy
 import numpy as np
 import torch
 from torch import nn
@@ -180,7 +180,7 @@ class DKT(nn.Module):
         device = yt.device
         one_hot = torch.eye(self.output_dim)
 
-        one_hot = torch.cat((torch.zeros(1, self.output_dim), one_hot), dim=0)
+        # one_hot = torch.cat((torch.zeros(1, self.output_dim), one_hot), dim=0)
 
         next_qt = questions[:, 1:]
 
@@ -189,9 +189,11 @@ class DKT(nn.Module):
         one_hot_qt = F.embedding(next_qt.cpu(), one_hot).to(device)  # [batch_size, seq_len - 1, output_dim]
 
         # dot product between yt and one_hot_qt
-        assert torch.all(yt != 0)
+        assert torch.all(one_hot_qt.sum(dim=-1)>0)
+        print(yt.shape)
+        print(one_hot_qt.shape)
         pred = (yt * one_hot_qt).sum(dim=-1)  # [batch_size, seq_len - 1]
-
+        assert torch.all(pred != 0)
         return pred
 
     def inference(self, X: torch.LongTensor, labels: torch.LongTensor, q_next):
@@ -288,6 +290,10 @@ class DKT(nn.Module):
         yt = torch.sigmoid(yt)
 
         yt = yt[:, :-1, :]
+        def assert_non_zero(t):
+            assert torch.all(t > torch.zeros_like(t))
+        assert_non_zero(yt)
+        assert_non_zero(self._get_next_pred(yt, questions))
         return self._get_next_pred(yt, questions)
 
     def forward(self, features,questions,skills,labels):

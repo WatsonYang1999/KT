@@ -148,6 +148,12 @@ class KTDataset(Dataset):
     def gen_question_trans_graph(self):
         pass
 
+class KTDataset_SA(KTDataset):
+    def __init__(self, q_num,s_num,questions, skills,answers,seq_len,max_seq_len):
+        super(KTDataset_SA, self).__init__(q_num,s_num,questions, skills,answers,seq_len,max_seq_len)
+        answers_one = (answers==1.0)
+        self.features = answers_one * self.s_num+self.skills
+
 def pad_collate(batch):
     (features, questions, answers) = zip(*batch)
     features = [torch.LongTensor(feat) for feat in features]
