@@ -154,13 +154,10 @@ class Architecture(nn.Module):
 
     def forward(self, q_embed_data, qa_embed_data):
         # target shape  bs, seqlen
-        seqlen, batch_size = q_embed_data.size(1), q_embed_data.size(0)
-
         qa_pos_embed = qa_embed_data
         q_pos_embed = q_embed_data
 
         y = qa_pos_embed
-        seqlen, batch_size = y.size(1), y.size(0)
         x = q_pos_embed
 
         # encoder
@@ -382,7 +379,7 @@ if __name__ == '__main__':
     model = AKT(n_question=10000, n_pid=10000, n_blocks=1, d_model=256,
                     dropout=0.05, kq_same=1, model_type='akt', l2=1e-5).to(device)
 
-
+    print(model)
     def count_model_parameters(model: torch.nn.Module):
         param_count = 0
         for param in model.parameters():

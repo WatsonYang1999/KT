@@ -11,12 +11,18 @@ class KTDatasetBase(ABC):
         pass
 
     @abstractmethod
-    def get_skill_question_mappings(self):
+    def get_skill_name(self,sid):
         pass
+
 
     @abstractmethod
     def get_features(self):
         pass
+
+    @abstractmethod
+    def get_q_matrix(self):
+        pass
+
 
 
 
