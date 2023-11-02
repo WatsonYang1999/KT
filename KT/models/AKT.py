@@ -142,7 +142,7 @@ class Architecture(nn.Module):
         print(f"n_heads: {n_heads}")
         self.d_model = d_model
         self.model_type = model_type
-        self.standard_attn = True
+        self.standard_attn = False
 
         if model_type in {'akt'}:
             self.blocks_1 = nn.ModuleList([
