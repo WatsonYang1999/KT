@@ -140,7 +140,6 @@ class Architecture(nn.Module):
         print(f"n_blocks: {n_blocks}")
         print(f"d_model: {d_model}")
         print(f"n_heads: {n_heads}")
-        exit(-1)
         self.d_model = d_model
         self.model_type = model_type
         self.standard_attn = True
@@ -402,7 +401,7 @@ class CosinePositionalEmbedding(nn.Module):
 if __name__ == '__main__':
 
     device = 'cuda'
-    model = AKT(n_question=10000, n_pid=10000, n_blocks=1, d_model=256,
+    model = AKT(n_question=100, n_pid=10000, n_blocks=1, d_model=256,
                     dropout=0.05, kq_same=1, model_type='akt', l2=1e-5).to(device)
 
     print(model)
