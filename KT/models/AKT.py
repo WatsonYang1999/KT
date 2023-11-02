@@ -138,9 +138,13 @@ class Architecture(nn.Module):
             n_head : number of heads. n_heads*d_feature = d_model
         """
         print(f"n_blocks: {n_blocks}")
+        print(f"d_model: {d_model}")
+        print(f"n_heads: {n_heads}")
+        exit(-1)
         self.d_model = d_model
         self.model_type = model_type
         self.standard_attn = True
+
         if model_type in {'akt'}:
             self.blocks_1 = nn.ModuleList([
                 TransformerLayer(d_model=d_model, d_feature=d_model // n_heads,
