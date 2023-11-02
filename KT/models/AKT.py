@@ -137,9 +137,10 @@ class Architecture(nn.Module):
             d_feature : dimension of input in each of the multi-head attention part.
             n_head : number of heads. n_heads*d_feature = d_model
         """
+        print(f"n_blocks: {n_blocks}")
         self.d_model = d_model
         self.model_type = model_type
-
+        self.standard_attn = True
         if model_type in {'akt'}:
             self.blocks_1 = nn.ModuleList([
                 TransformerLayer(d_model=d_model, d_feature=d_model // n_heads,
@@ -151,6 +152,27 @@ class Architecture(nn.Module):
                                  d_ff=d_ff, dropout=dropout, n_heads=n_heads, kq_same=kq_same)
                 for _ in range(n_blocks*2)
             ])
+        elif self.standard_attn:
+            self.blocks_1 = nn.ModuleList(
+                [
+                    nn.MultiheadAttention(
+                        embed_dim=d_model,
+                        num_heads=n_heads,
+                        dropout = dropout
+                    )
+                    for _ in range(n_blocks)
+                ]
+            )
+            self.blocks_2 = nn.ModuleList([
+                nn.MultiheadAttention(
+                    embed_dim=d_model,
+                    num_heads=n_heads,
+                    dropout=dropout
+                )
+                for _ in range(n_blocks * 2)
+            ])
+
+        # use standard multihead attention to checkout the difference
 
     def forward(self, q_embed_data, qa_embed_data):
         # target shape  bs, seqlen
