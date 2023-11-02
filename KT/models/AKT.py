@@ -333,6 +333,10 @@ def attention(q, k, v, d_k, mask, dropout, zero_pad, gamma=None):
     """
     This is called by Multi-head atention object to find the values.
     """
+    print(f"q shape {q.shape}")
+    print(f"k shape {k.shape}")
+    print(f"v shape {v.shape}")
+    print(f"d_k : {d_k}")
     scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)  # BS, 8, seqlen, seqlen
     bs, head, seqlen = scores.size(0), scores.size(1), scores.size(2)
 
@@ -366,6 +370,9 @@ def attention(q, k, v, d_k, mask, dropout, zero_pad, gamma=None):
         scores = torch.cat([pad_zero, scores[:, :, 1:, :]], dim=2)
     scores = dropout(scores)
     output = torch.matmul(scores, v)
+    print(f"score: {scores.shape}")
+    print(f"output: {output.shape}")
+    exit(-1)
     return output
 
 
