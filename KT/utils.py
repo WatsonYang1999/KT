@@ -168,6 +168,37 @@ def load_assist09_s(args):
 
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
+def load_ednet_re(args):
+    from KT.dataset_loader.ednet_re import build_user_sequences,load_qs_relations,load_knowledge_structure,frequency_count
+    train_task1_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\train_data\train_task_1_2.csv'
+    test_task1_public_path =  r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\test_data\test_public_answers_task_1.csv'
+    skill_metadata_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\subject_metadata.csv'
+    train_seqs = build_user_sequences(train_task1_path)
+    test_public_seqs = build_user_sequences(test_task1_public_path)
+    qs_mapping, sq_mapping = load_qs_relations()
+    args.q_num = len(qs_mapping)
+    args.s_num = len(sq_mapping)
+
+    def cut_seq(seqs,max_len):
+        n_data = len(seqs)
+
+        np.array([n_data,max_len],dtype=int)
+
+    train_q,train_y,train_real_len = cut_seq(train_seqs)
+    train_set = KTDataset(args.q_num, args.s_num, train_problem = , train_skill = None, train_y, train_real_len,
+                          max_seq_len=args.max_seq_len)
+    test_set = KTDataset(args.q_num, args.s_num, test_problem, test_skill =  None, test_y, test_real_len,
+                         max_seq_len=args.max_seq_len)
+    if args.data_augment:
+        print('Use Data Augmentation')
+        train_set.augment()
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
+    '''
+        Modification Required
+        need a better way to load qs_matrix cuz the original file is like a crap of shit 
+    '''
+    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 def load_assist09_q(args):
     data_dir = 'Dataset\\' + args.dataset
     data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
@@ -508,9 +539,11 @@ def load_dataset(args):
         pass
     elif args.dataset == 'buaa18s':
         pass
-    elif args.dataset == 'ednet_qs':
+    elif args.dataset == 'ednet-qs':
         from KT.dataset_loader.ednet import load_ednet_qs
         return load_ednet_qs(args)
+    elif args.dataset == 'ednet-re':
+        return load_ednet_re(args)
     elif args.dataset == 'ednet':
         from KT.dataset_loader.ednet import load_ednet
         return load_ednet(args)

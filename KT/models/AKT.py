@@ -10,7 +10,6 @@ import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 class Dim(IntEnum):
     batch = 0
     seq = 1
@@ -137,14 +136,12 @@ class Architecture(nn.Module):
             d_feature : dimension of input in each of the multi-head attention part.
             n_head : number of heads. n_heads*d_feature = d_model
         """
-        print(f"n_blocks: {n_blocks}")
-        print(f"d_model: {d_model}")
-        print(f"n_heads: {n_heads}")
+
         self.d_model = d_model
         self.model_type = model_type
         self.standard_attn = False
 
-        if model_type in {'akt'}:
+        if not self.standard_attn and model_type in {'akt'}:
             self.blocks_1 = nn.ModuleList([
                 TransformerLayer(d_model=d_model, d_feature=d_model // n_heads,
                                  d_ff=d_ff, dropout=dropout, n_heads=n_heads, kq_same=kq_same)
@@ -156,6 +153,7 @@ class Architecture(nn.Module):
                 for _ in range(n_blocks*2)
             ])
         elif self.standard_attn:
+            print("Using standard attention")
             self.blocks_1 = nn.ModuleList(
                 [
                     nn.MultiheadAttention(
@@ -187,7 +185,7 @@ class Architecture(nn.Module):
 
         # encoder
         for block in self.blocks_1:  # encode qas
-            y = block(mask=1, query=y, key=y, values=y)
+            y = block(mask=1, query=y, key=y, values=y,apply_pos = True)
         flag_first = True
         for block in self.blocks_2:
             if flag_first:  # peek current question
@@ -195,10 +193,9 @@ class Architecture(nn.Module):
                           values=x, apply_pos=False)
                 flag_first = False
             else:  # dont peek current response
-                x = block(mask=0, query=x, key=x, values=y, apply_pos=True)
+                x = block(mask=1, query=x, key=x, values=y, apply_pos=True)
                 flag_first = True
         return x
-
 
 class TransformerLayer(nn.Module):
     def __init__(self, d_model, d_feature,
@@ -242,14 +239,11 @@ class TransformerLayer(nn.Module):
         nopeek_mask = np.triu(
             np.ones((1, 1, seqlen, seqlen)), k=mask).astype('uint8')
         src_mask = (torch.from_numpy(nopeek_mask) == 0).to(device)
-        if mask == 0:  # If 0, zero-padding is needed.
-            # Calls block.masked_attn_head.forward() method
-            query2 = self.masked_attn_head(
-                query, key, values, mask=src_mask, zero_pad=True)
-        else:
-            # Calls block.masked_attn_head.forward() method
-            query2 = self.masked_attn_head(
-                query, key, values, mask=src_mask, zero_pad=False)
+
+        # If 0, zero-padding is needed.
+        query2 = self.masked_attn_head(
+            query, key, values, mask=src_mask, zero_pad=(mask == 0))
+
 
         query = query + self.dropout1((query2))
         query = self.layer_norm1(query)
@@ -333,11 +327,7 @@ def attention(q, k, v, d_k, mask, dropout, zero_pad, gamma=None):
     """
     This is called by Multi-head atention object to find the values.
     """
-    print(f"q shape {q.shape}")
-    print(f"k shape {k.shape}")
-    print(f"v shape {v.shape}")
-    print(f"d_k : {d_k}")
-    scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)  # BS, 8, seqlen, seqlen
+    scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)  # BS, nums_head, seqlen, seqlen
     bs, head, seqlen = scores.size(0), scores.size(1), scores.size(2)
 
     x1 = torch.arange(seqlen).expand(seqlen, -1).to(device)
@@ -370,9 +360,6 @@ def attention(q, k, v, d_k, mask, dropout, zero_pad, gamma=None):
         scores = torch.cat([pad_zero, scores[:, :, 1:, :]], dim=2)
     scores = dropout(scores)
     output = torch.matmul(scores, v)
-    print(f"score: {scores.shape}")
-    print(f"output: {output.shape}")
-    exit(-1)
     return output
 
 

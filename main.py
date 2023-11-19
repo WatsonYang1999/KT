@@ -10,7 +10,6 @@ from KT.models.Pretrain import embedding_pretrain
 from KT.train import train, evaluate
 from KT.utils import load_model, load_dataset, reformat_datatime
 
-
 def set_parser():
     def str_to_bool(s):
         return s.lower() == 'true'
@@ -76,7 +75,6 @@ def set_parser():
     parser.add_argument('--log_file', type=str, default='', help='path of the logging file')
     return parser
 
-
 torch.autograd.set_detect_anomaly(True)
 
 parser = set_parser()
@@ -110,7 +108,6 @@ model, optimizer = load_model(args)
 model = model.to(args.device)
 kt_loss = KTLoss()
 
-
 def set_logger(args):
     time_program_begin = datetime.now()
     log_file_name = '-'.join([args.dataset.__str__(),
@@ -118,7 +115,7 @@ def set_logger(args):
                               reformat_datatime(time_program_begin)]) + '.txt'
 
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format='%(asctime)s [%(levelname)s] %(message)s',
         handlers=[
             logging.StreamHandler(),  # Output logs to the console
@@ -127,7 +124,6 @@ def set_logger(args):
     )
     logging.info(args.__str__())
     logging.info('-----------------------------------------------------------')
-
 
 set_logger(args)
 
@@ -147,7 +143,7 @@ if not args.eval:
         metric_select = 'val_auc'
         greater_is_better = 1
         for idx, metric_i in enumerate(logs[metric_select]):
-            if (best_val_auc - metric_i) * greater_is_better > 0:
+            if (metric_i-best_val_auc) * greater_is_better > 0:
                 best_val_auc = metric_i
                 best_epoch = idx
         for _ in metrics:

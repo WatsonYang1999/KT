@@ -5,8 +5,6 @@ df = pd.read_csv('Dataset/beihang/q_matrix.csv')
 def remap(q):
     return df.loc[df['id']==q].index.tolist()[0]+1
 
-
-
 def load_buaa(data_path,max_seq_len=200):
     seq_len_list = []
     question_list = []

@@ -4,7 +4,6 @@ from torch import nn
 
 def inference(features, questions, skills, labels, seq_len,model,loss_func):
 
-
     if model._get_name() == 'DKT':
         pred = model(features, questions, skills, labels)
         loss_kt, auc, acc = loss_func(pred, labels)
@@ -158,7 +157,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     early_stop_interval = 25
     if args.current_epoch != 0:
         print(f"start training from previous checkpoints of epoch {args.current_epoch}")
-    for epoch in range(args.current_epoch, args.n_epochs):
+    for epoch in range(args.current_epoch, args.current_epoch+args.n_epochs):
         print(f"epoch: {epoch}")
 
         train_epoch(model, data_loader=data_loaders['train_loader'], optimizer=optimizer,
@@ -166,6 +165,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
 
         val_epoch(model, data_loader=data_loaders['test_loader'], optimizer=optimizer,
                   loss_func=loss_func, logs=logs, cuda=args.cuda)
+
         if max(logs['val_auc']) > best_val_auc:
             best_val_auc = max(logs['val_auc'])
             best_epoch = epoch
@@ -192,6 +192,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
         if early_stop:
             if best_epoch + early_stop_interval < epoch:
                 print(f'Early Stop at epoch {epoch}!')
+                args.n_epochs = epoch
                 print(f'Epoch: {epoch} Best Test Set AUC Updated {best_val_auc}')
                 break
     for metric in metrics:
