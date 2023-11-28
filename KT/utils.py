@@ -168,27 +168,105 @@ def load_assist09_s(args):
 
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
+
 def load_ednet_re(args):
-    from KT.dataset_loader.ednet_re import build_user_sequences,load_qs_relations,load_knowledge_structure,frequency_count
-    train_task1_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\train_data\train_task_1_2.csv'
-    test_task1_public_path =  r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\test_data\test_public_answers_task_1.csv'
-    skill_metadata_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\subject_metadata.csv'
-    train_seqs = build_user_sequences(train_task1_path)
-    test_public_seqs = build_user_sequences(test_task1_public_path)
-    qs_mapping, sq_mapping = load_qs_relations()
-    args.q_num = len(qs_mapping)
-    args.s_num = len(sq_mapping)
+    data_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data'
 
-    def cut_seq(seqs,max_len):
-        n_data = len(seqs)
+    strategy = 'first_select'
 
-        np.array([n_data,max_len],dtype=int)
+    def cut_seq(seqs, max_len):
+        '''
+        :param seqs:seqs[uid] = {"question": q_seq, "result": r_seq, "ca": ca_seq, "sa": sa_seq}
+        '''
+        q_seq_list = []
+        y_seq_list = []
+        s_seq_list = []
+        seq_len_list = []
+        q_padding = -1
+        y_padding = -1
+        s_padding = -1
 
-    train_q,train_y,train_real_len = cut_seq(train_seqs)
-    train_set = KTDataset(args.q_num, args.s_num, train_problem = , train_skill = None, train_y, train_real_len,
-                          max_seq_len=args.max_seq_len)
-    test_set = KTDataset(args.q_num, args.s_num, test_problem, test_skill =  None, test_y, test_real_len,
-                         max_seq_len=args.max_seq_len)
+        def pad(seq, max_len, pad_value):
+            if len(seq) < max_len:
+                return seq + [pad_value for _ in range(0, max_len - len(seq))]
+            return seq[:max_len]
+
+        for uid, seqs in seqs.items():
+
+            q_seq = seqs['question']
+            a_seq = seqs['result']
+
+            def select_skill(question):
+                if strategy == 'first_select':
+                    return list(qs_mapping[question])[0]
+
+            s_seq = [select_skill(q) for q in q_seq]
+
+            seq_len = min(len(q_seq), max_len)
+            q_seq_list.append(pad(q_seq, max_len, q_padding))
+            y_seq_list.append(pad(a_seq, max_len, y_padding))
+            s_seq_list.append(pad(s_seq, max_len, s_padding))
+            seq_len_list.append(seq_len)
+        return np.array(q_seq_list, dtype=int), np.array(s_seq_list, dtype=int), np.array(y_seq_list,
+                                                                                          dtype=float), np.array(
+            seq_len_list, dtype=int)
+
+    preprocessed_dataset = 'ednet-re-' + strategy + '.npz'
+    if not os.path.exists(os.path.join(data_path, preprocessed_dataset)):
+        from KT.dataset_loader.ednet_re import build_user_sequences, load_qs_relations, load_knowledge_structure, \
+            frequency_count
+        train_task1_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\train_data\train_task_1_2.csv'
+        test_task1_public_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\test_data\test_public_answers_task_1_2.csv'
+        skill_metadata_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\subject_metadata.csv'
+
+        train_seqs = build_user_sequences(train_task1_path)
+        test_public_seqs = build_user_sequences(test_task1_public_path)
+        qs_mapping, sq_mapping = load_qs_relations()
+        args.q_num = len(qs_mapping)
+        args.s_num = len(sq_mapping)
+        train_q, train_s, train_y, train_real_len = cut_seq(train_seqs, args.max_seq_len)
+        assert train_q.shape == train_y.shape
+
+        test_q, test_s, test_y, test_real_len = cut_seq(test_public_seqs, args.max_seq_len)
+
+        assert test_q.shape == test_y.shape
+        q_merged = np.vstack((train_q, test_q))
+        s_merged = np.vstack((train_s, test_s))
+        y_merged = np.vstack((train_y, test_y))
+        real_len_merged = np.hstack((train_real_len, test_real_len))
+
+        np.savez(
+            os.path.join(data_path, preprocessed_dataset),
+            q_num=len(qs_mapping),
+            s_num=len(sq_mapping),
+            q=q_merged,
+            s=s_merged,
+            y=y_merged,
+            seq_len=real_len_merged,
+            qs_mapping=qs_mapping,
+            sq_mapping=sq_mapping
+        )
+    else:
+        data = np.load(os.path.join(data_path, preprocessed_dataset),allow_pickle=True)
+        y, skill, problem, real_len = data['y'], data['s'], data['q'], data['seq_len']
+
+        args.s_num, args.q_num = int(data['s_num']), int(data['q_num'])
+
+        train_data, test_data = train_test_split([y, skill, problem, real_len])
+        train_y, train_s, train_q, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
+        test_y, test_s, test_q, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
+        # very ugly idea
+        qs_mapping = eval(data['qs_mapping'].__str__())
+        sq_mapping = eval(data['sq_mapping'].__str__())
+    print(qs_mapping)
+    print(type(qs_mapping))
+    train_set = KTDataset(args.q_num, args.s_num, train_q, train_s, train_y, train_real_len, args.max_seq_len,
+                          qs_mapping,
+                          sq_mapping)
+
+    test_set = KTDataset(args.q_num, args.s_num, test_q, test_s, test_y, test_real_len, args.max_seq_len, qs_mapping,
+                         sq_mapping)
+    print("Done Loading Datasets")
     if args.data_augment:
         print('Use Data Augmentation')
         train_set.augment()
@@ -198,7 +276,9 @@ def load_ednet_re(args):
         Modification Required
         need a better way to load qs_matrix cuz the original file is like a crap of shit 
     '''
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
+    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': train_set.get_qs_matrix()}
+
+
 def load_assist09_q(args):
     data_dir = 'Dataset\\' + args.dataset
     data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
@@ -225,6 +305,7 @@ def load_assist09_q(args):
     '''
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
 
+
 def load_assist17_s(args):
     print("Loading assist 2017 skill datasets")
 
@@ -235,7 +316,7 @@ def load_assist17_s(args):
     args.q_num = 3162
 
     os.chdir('C:\\Users\\12574\\Desktop\\KT-Refine')
-    data_path = os.path.join("Dataset","assist2017_pid","assist2017_pid.csv")
+    data_path = os.path.join("Dataset", "assist2017_pid", "assist2017_pid.csv")
     from KT.dataset_loader.assist_17 import PID_DATA
     dat = PID_DATA(n_question=n_question,
                    seqlen=args.max_seq_len, separate_char=',')
@@ -243,10 +324,10 @@ def load_assist17_s(args):
     q_data, qa_data, pid = dat.load_data(data_path)
 
     skill = q_data.astype(int)
-    y = (qa_data>args.s_num * numpy.ones_like(qa_data)).astype(int)
+    y = (qa_data > args.s_num * numpy.ones_like(qa_data)).astype(int)
 
     problem = pid.astype(int)
-    real_len = (q_data>numpy.zeros_like(q_data)).sum(axis=1).astype(int)
+    real_len = (q_data > numpy.zeros_like(q_data)).sum(axis=1).astype(int)
 
     train_data, test_data = train_test_split([y, skill, problem, real_len])
 
@@ -256,14 +337,15 @@ def load_assist17_s(args):
     assert args.q_num == 3162
 
     train_set = KTDataset_SA(args.q_num, args.s_num, train_problem, train_skill, train_y, train_real_len,
-                          max_seq_len=args.max_seq_len)
+                             max_seq_len=args.max_seq_len)
     test_set = KTDataset_SA(args.q_num, args.s_num, test_problem, test_skill, test_y, test_real_len,
-                         max_seq_len=args.max_seq_len)
+                            max_seq_len=args.max_seq_len)
 
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
 
     return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
+
 
 def load_buaa(args):
     print("Loading Beihang1819 Dataset")
@@ -315,6 +397,7 @@ def load_buaa(args):
 
 
 def load_junyi(args):
+    print('loading junyi dataset')
     ratio = [0.8, 0.2]
 
     max_seq_len = args.max_seq_len
@@ -576,7 +659,7 @@ def load_model(args):
         model = DKT(feature_dim=2 * args.q_num + 1,
                     embed_dim=args.embed_dim,
                     hidden_dim=args.hidden_dim,
-                    output_dim=args.q_num+1)
+                    output_dim=args.q_num + 1)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     if args.model == 'DKT_AUG':
@@ -609,6 +692,15 @@ def load_model(args):
         from KT.models.SAKT import SAKT
         model = SAKT(q_num=args.q_num, seq_len=args.max_seq_len, embed_dim=args.embed_dim, heads=1,
                      dropout=args.dropout)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+
+    elif args.model == 'SAKT_SKILL':
+        ## why this part is not updated in remote repo?
+
+        from KT.models.SAKT import SAKT_SKILL
+        model = SAKT_SKILL(q_num=args.q_num, seq_len=args.max_seq_len, embed_dim=args.embed_dim, heads=1,
+                           dropout=args.dropout)
+        model.set_qs_matrix(args.qs_matrix)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     elif args.model == 'DKVMN':
         from KT.models.DKVMN import DKVMN

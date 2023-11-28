@@ -7,6 +7,7 @@ import numpy as np
 
 random_seed = 42
 
+
 def build_dense_graph(node_num):
     print(node_num)
     graph = 1. / (node_num - 1) * np.ones((node_num, node_num))
@@ -14,54 +15,103 @@ def build_dense_graph(node_num):
     graph = torch.from_numpy(graph).float()
     return graph
 
+
 class KTDataset(Dataset):
-    def __init__(self, q_num,s_num,questions, skills,answers,seq_len,max_seq_len):
+    def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len, qs_mapping=None, sq_mapping=None,
+                 remapping=True, item_start_from_one=True):
+
         super(KTDataset, self).__init__()
         self.q_num = q_num
         self.s_num = s_num
         self.questions = questions
         self.skills = skills
+
         if skills is None:
             self.skills = self.questions
         self.answers = answers
         self.seq_len = seq_len
         self.max_seq_len = max_seq_len
         # need some calculation
-        answers_pad = (answers==-1.)
-        answers_one = (answers==1.0)
-        answers_zero = (answers==0.)
-        print(self.questions)
-        self.features = answers_one * self.q_num+self.questions
 
+        self.qs_mapping = qs_mapping
+        self.sq_mapping = sq_mapping
+        if remapping:
+            '''
+                remapping the qid and sid to [1,q_num] and [1,s_num]
+                while doing this, the qs mapping also have to be updated
+            '''
+            self.sid_remapping = {}
+            self.qid_remapping = {}
+            for i in range(1, len(self.qs_mapping) + 1):
+                self.qid_remapping[list(self.qs_mapping.keys())[i - 1]] = i
+            for i in range(1, len(self.sq_mapping) + 1):
+                self.sid_remapping[list(self.sq_mapping.keys())[i - 1]] = i
+            # assert 16229 in self.sq_mapping.keys()
+
+            self.sid_remapping_reverse = {value: key for key, value in self.sid_remapping.items()}
+            self.qid_remapping_reverse = {value: key for key, value in self.qid_remapping.items()}
+
+            qid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.qid_remapping[x])
+            sid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.sid_remapping[x])
+
+            self.questions = qid_vectorized_mapping(self.questions)
+            if self.skills is not None:
+                self.skills = sid_vectorized_mapping(self.skills)
+
+            # re-calculate qs-matrix base on remapped index
+            self.qs_matrix = np.ndarray([self.q_num + 1, self.s_num + 1], dtype=int)
+            for q,s_list in qs_mapping.items():
+                qid_remapped = self.qid_remapping[q]
+                s_list = [self.sid_remapping[s] for s in s_list]
+                for sid_remapped in s_list:
+                    self.qs_matrix[qid_remapped,sid_remapped] = 1
+
+        answers_one = (answers == 1.0)
+        print(self.questions)
+        assert questions.shape == answers.shape
+        self.features = answers_one * self.q_num + self.questions
+        print(type(self.features))
+        # this loading process is way fucking too slow that can be optimized greatly
+
+
+    def init_by_raw_sequences(self, q_seq, a_seq, qs_mapping):
+        pass
 
     def __getitem__(self, index):
-        return self.features[index],self.questions[index], self.skills[index], self.answers[index],self.seq_len
+        '''
+            this part requires a lot of update to fit different datasets
+        '''
+
+        return self.features[index], self.questions[index], self.skills[index], self.answers[index], self.seq_len[index]
 
     def __len__(self):
         return len(self.features)
 
-    def set_qid_map(self,qid_map):
-        self.qid_map = qid_map
+    def set_qs_mapping(self, qs_mapping):
+        self.qs_mapping = qs_mapping
 
-    def set_sid_map(self,sid_map):
-        self.sid_map = sid_map
+    def set_sq_mapping(self, sq_mapping):
+        self.sq_mapping = sq_mapping
+
+    def get_qs_matrix(self):
+        return self.qs_matrix
 
     def analyse(self):
         q_num = 0
         for seq in self.questions:
             for q in seq:
-                q_num = max(q,q_num)
-        print('Dataset Question Number : ',q_num)
-        freq_list = [0 for i in range(q_num+1)]
-        right_list = [0 for i in range(q_num+1)]
-        wrong_list = [0 for i in range(q_num+1)]
-        for i,seq in enumerate(self.questions):
-            for j,q in enumerate(seq):
-                freq_list[q]+=1
-                if self.answers[i][j]==0:
-                    wrong_list[q]+=1
+                q_num = max(q, q_num)
+        print('Dataset Question Number : ', q_num)
+        freq_list = [0 for i in range(q_num + 1)]
+        right_list = [0 for i in range(q_num + 1)]
+        wrong_list = [0 for i in range(q_num + 1)]
+        for i, seq in enumerate(self.questions):
+            for j, q in enumerate(seq):
+                freq_list[q] += 1
+                if self.answers[i][j] == 0:
+                    wrong_list[q] += 1
                 else:
-                    right_list[q]+=1
+                    right_list[q] += 1
         # import matplotlib.pyplot as plt
         #
         # plt.subplot(2,1,1)
@@ -82,40 +132,40 @@ class KTDataset(Dataset):
         self.seq_len = self.seq_len.tolist()
         total_len = len(self.features)
         max_l = self.max_seq_len
+
         def pad(target, value, max_len):
 
             pad_len = max_len - len(target)
             target = target + [value for i in range(pad_len)]
             return target
-        for i in range(0,total_len):
 
+        for i in range(0, total_len):
 
             seq_len = self.seq_len[i]
             if seq_len < 5: continue
             import random
 
-            mid = random.randint(int(seq_len/3),int(seq_len/3*2))
-            assert mid>=0
-            assert mid<= seq_len
+            mid = random.randint(int(seq_len / 3), int(seq_len / 3 * 2))
+            assert mid >= 0
+            assert mid <= seq_len
 
-            features1 = pad(self.features[i][:mid],0,max_l)
-            features2 =pad(self.features[i][mid:],0,max_l)
+            features1 = pad(self.features[i][:mid], 0, max_l)
+            features2 = pad(self.features[i][mid:], 0, max_l)
             self.features.append(features1)
             self.features.append(features2)
 
-
-            questions1 = pad(self.questions[i][:mid],0,max_l)
-            questions2 = pad(self.questions[i][mid:],0,max_l)
+            questions1 = pad(self.questions[i][:mid], 0, max_l)
+            questions2 = pad(self.questions[i][mid:], 0, max_l)
             self.questions.append(questions1)
             self.questions.append(questions2)
 
-            skills1 = pad(self.skills[i][:mid],0,max_l)
-            skills2 = pad(self.skills[i][mid:],0,max_l)
+            skills1 = pad(self.skills[i][:mid], 0, max_l)
+            skills2 = pad(self.skills[i][mid:], 0, max_l)
             self.skills.append(skills1)
             self.skills.append(skills2)
 
-            answers1 = pad(self.answers[i][:mid],-1,max_l)
-            answers2 = pad(self.answers[i][mid:],-1,max_l)
+            answers1 = pad(self.answers[i][:mid], -1, max_l)
+            answers2 = pad(self.answers[i][mid:], -1, max_l)
             self.answers.append(answers1)
             self.answers.append(answers2)
 
@@ -130,7 +180,7 @@ class KTDataset(Dataset):
         self.answers = np.array(self.answers)
         self.seq_len = np.array(self.seq_len)
 
-    def purify(self,min_len = 10):
+    def purify(self, min_len=10):
         pass
 
     def print(self):
@@ -144,15 +194,16 @@ class KTDataset(Dataset):
     def gen_skill_trans_graph(self):
         pass
 
-
     def gen_question_trans_graph(self):
         pass
 
+
 class KTDataset_SA(KTDataset):
-    def __init__(self, q_num,s_num,questions, skills,answers,seq_len,max_seq_len):
-        super(KTDataset_SA, self).__init__(q_num,s_num,questions, skills,answers,seq_len,max_seq_len)
-        answers_one = (answers==1.0)
-        self.features = answers_one * self.s_num+self.skills
+    def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len):
+        super(KTDataset_SA, self).__init__(q_num, s_num, questions, skills, answers, seq_len, max_seq_len)
+        answers_one = (answers == 1.0)
+        self.features = answers_one * self.s_num + self.skills
+
 
 def pad_collate(batch):
     (features, questions, answers) = zip(*batch)
@@ -165,8 +216,7 @@ def pad_collate(batch):
     return feature_pad, question_pad, answer_pad
 
 
-def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50,data_shuffle=True):
-
+def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50, data_shuffle=True):
     seq_len_list = []
     question_list = []
     answer_list = []
@@ -194,7 +244,6 @@ def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50,data_
                 for q in question_seq:
                     problem_set.add(q)
 
-
                 question_list.append(question_seq)
             else:
                 answer_seq = line.split(',')
@@ -203,32 +252,29 @@ def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50,data_
                 # feature_list.append(
                 #     [2 * (q-1) + answer_seq[idx]  for idx, q in enumerate(skill_seq)]
                 # )
-                #feature_list.append([answer_seq[idx] * question_num + q for idx, q in enumerate(question_seq)])
+                # feature_list.append([answer_seq[idx] * question_num + q for idx, q in enumerate(question_seq)])
 
     f.close()
 
     print(f'Dataset Question Num: {problem_set.__len__()}')
-    set_values = [i for i in range(1,len(problem_set)+1)]
-    problem_dict = dict(zip(problem_set,set_values))
+    set_values = [i for i in range(1, len(problem_set) + 1)]
+    problem_dict = dict(zip(problem_set, set_values))
     print(problem_dict)
 
     for question_seq in question_list:
-        for idx,q in enumerate(question_seq):
-
+        for idx, q in enumerate(question_seq):
             question_seq[idx] = problem_dict[q]
     for question_seq in question_list:
         feature_list.append([answer_seq[idx] * question_num + q for idx, q in enumerate(question_seq)])
-        for idx,q in enumerate(question_seq):
-
-            assert q<= question_num
-            assert q>0
+        for idx, q in enumerate(question_seq):
+            assert q <= question_num
+            assert q > 0
     for i in range(len(feature_list)):
         f_seq = feature_list[i]
         q_seq = question_list[i]
         a_seq = answer_list[i]
         for j in range(len(f_seq)):
-
-            #assert f_seq[j] == a_seq[j] *question_num + q_seq[j]
+            # assert f_seq[j] == a_seq[j] *question_num + q_seq[j]
             f_seq[j] = a_seq[j] * question_num + q_seq[j]
     kt_dataset = KTDataset(feature_list, question_list, answer_list)
     kt_dataset.analyse()
@@ -246,15 +292,18 @@ def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50,data_
 
     print(train_loader)
     print(test_loader)
-    return train_loader,test_loader
+    return train_loader, test_loader
+
 
 import numpy as np
+
 
 def is_ascending(seq):
     if len(seq) == 1: return False
     for i in range(0, len(seq) - 1):
         if seq[i] > seq[i - 1]: return False
     return True
+
 
 def preprocess():
     csv_path = "/Users/watsonyang/PycharmProjects/MyKT/Dataset/assist2009_updated/assist2009_updated_test.csv"

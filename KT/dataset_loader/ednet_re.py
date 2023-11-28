@@ -19,8 +19,7 @@ def build_user_sequences(file_path):
     except Exception as e:
         print(e)
         exit(-1)
-    assert len(df['AnswerValue'].unique()) == 4
-    assert len(df['CorrectAnswer'].unique()) == 4
+
 
     df_user_groups = df.groupby('UserId')
 
@@ -28,15 +27,12 @@ def build_user_sequences(file_path):
 
     for uid, df_user in df_user_groups:
         assert uid == df_user['UserId'].iloc[0]
-        seq_len = len(df_user)
         # are the interactions following the time order
 
         q_seq = df_user['QuestionId'].tolist()
         r_seq = df_user['IsCorrect'].tolist()
-        ca_seq = df_user['CorrectAnswer'].tolist()
-        sa_seq = df_user['AnswerValue'].tolist()
 
-        seqs[uid] = {"question": q_seq, "result": r_seq, "ca": ca_seq, "sa": sa_seq}
+        seqs[uid] = {"question": q_seq, "result": r_seq}
 
     return seqs
 

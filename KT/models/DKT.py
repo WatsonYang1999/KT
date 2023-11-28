@@ -141,6 +141,7 @@ class DKT(nn.Module):
         self.hidden_dim = hidden_dim
         self.embed_dim = embed_dim
         self.output_dim = int(output_dim)
+        self.dropout = dropout
         self.bias = bias
         self.rnn = nn.LSTM(self.embed_dim, hidden_dim, bias=bias, dropout=dropout, batch_first=True)
         self.embedding = nn.Embedding(self.feature_dim, self.embed_dim)
@@ -190,8 +191,6 @@ class DKT(nn.Module):
 
         # dot product between yt and one_hot_qt
         assert torch.all(one_hot_qt.sum(dim=-1)>0)
-        print(yt.shape)
-        print(one_hot_qt.shape)
         pred = (yt * one_hot_qt).sum(dim=-1)  # [batch_size, seq_len - 1]
         assert torch.all(pred != 0)
         return pred

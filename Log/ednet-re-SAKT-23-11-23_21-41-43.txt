@@ -1,0 +1,13 @@
+2023-11-23 21:41:43,491 [INFO] Namespace(batch_size=16, checkpoint_dir='C:\\Users\\12574\\Desktop\\KT-Refine\\checkpoints', cuda=True, current_epoch=0, data_augment=False, dataset='ednet-re', device=device(type='cuda'), dropout=0.2, edge_types=2, embed_dim=128, eval=False, graph_type='Dense', hidden_dim=50, log_file='', lr=0.0001, max_seq_len=200, memory_size=20, model='SAKT', n_epochs=1, output_dim=100, pretrain='load', pretrain_embed_file='Dataset/ednet-re/embed_pretrain.npz', q_num=27613, qs_matrix=None, s_num=388, shuffle=True, train_from_scratch=True)
+2023-11-23 21:41:43,492 [INFO] -----------------------------------------------------------
+2023-11-23 21:47:03,530 [INFO] Best val_auc in epoch 0: train_auc:  0.6139739330299064  train_loss:  0.6251351833343506  train_acc:  0.658503746502227  val_auc:  0.6091012721767287  val_loss:  0.6271090507507324  val_acc:  0.6552772988440524  
+2023-11-23 21:47:03,530 [INFO] Best val_auc in epoch 0: train_auc:  0.6139739330299064  train_loss:  0.6251351833343506  train_acc:  0.658503746502227  val_auc:  0.6091012721767287  val_loss:  0.6271090507507324  val_acc:  0.6552772988440524  
+2023-11-23 21:47:03,530 [INFO] Best val_auc in epoch 0: train_auc:  0.6139739330299064  train_loss:  0.6251351833343506  train_acc:  0.658503746502227  val_auc:  0.6091012721767287  val_loss:  0.6271090507507324  val_acc:  0.6552772988440524  
+2023-11-23 21:47:03,531 [INFO] Best val_auc in epoch 0: train_auc:  0.6139739330299064  train_loss:  0.6251351833343506  train_acc:  0.658503746502227  val_auc:  0.6091012721767287  val_loss:  0.6271090507507324  val_acc:  0.6552772988440524  
+2023-11-23 21:47:03,531 [INFO] Best val_auc in epoch 0: train_auc:  0.6139739330299064  train_loss:  0.6251351833343506  train_acc:  0.658503746502227  val_auc:  0.6091012721767287  val_loss:  0.6271090507507324  val_acc:  0.6552772988440524  
+2023-11-23 21:47:03,531 [INFO] Best val_auc in epoch 0: train_auc:  0.6139739330299064  train_loss:  0.6251351833343506  train_acc:  0.658503746502227  val_auc:  0.6091012721767287  val_loss:  0.6271090507507324  val_acc:  0.6552772988440524  
+2023-11-23 21:47:03,531 [INFO] -----------------------------------------------------------
+2023-11-23 21:47:03,532 [INFO] {'train_auc': [0.6139739330299064], 'train_loss': [0.6251352], 'train_acc': [0.658503746502227], 'val_auc': [0.6091012721767287], 'val_loss': [0.62710905], 'val_acc': [0.6552772988440524]}
+2023-11-23 21:47:03,532 [INFO] Delta Time : 0.0
+2023-11-23 21:47:03,532 [INFO] 
+

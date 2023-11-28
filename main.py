@@ -7,8 +7,9 @@ import torch
 
 from KT.models.Loss import KTLoss
 from KT.models.Pretrain import embedding_pretrain
-from KT.train import train, evaluate
+from KT.train import train, evaluate, rank_data_performance
 from KT.utils import load_model, load_dataset, reformat_datatime
+
 
 def set_parser():
     def str_to_bool(s):
@@ -51,7 +52,7 @@ def set_parser():
     parser.add_argument('--n_epochs', type=int, default=200, help='Total Epochs.')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--max_seq_len', type=int, default=200)
-    parser.add_argument('--shuffle', type=str_to_bool, default='True')
+    parser.add_argument('--shuffle', type=str_to_bool, default='False')
     parser.add_argument('--cuda', type=str_to_bool, default='True')
     # some model hyper-parameters
 
@@ -74,6 +75,7 @@ def set_parser():
 
     parser.add_argument('--log_file', type=str, default='', help='path of the logging file')
     return parser
+
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -106,7 +108,9 @@ elif args.pretrain == 'load':
 model, optimizer = load_model(args)
 
 model = model.to(args.device)
+
 kt_loss = KTLoss()
+
 
 def set_logger(args):
     time_program_begin = datetime.now()
@@ -124,6 +128,7 @@ def set_logger(args):
     )
     logging.info(args.__str__())
     logging.info('-----------------------------------------------------------')
+
 
 set_logger(args)
 
@@ -143,7 +148,7 @@ if not args.eval:
         metric_select = 'val_auc'
         greater_is_better = 1
         for idx, metric_i in enumerate(logs[metric_select]):
-            if (metric_i-best_val_auc) * greater_is_better > 0:
+            if (metric_i - best_val_auc) * greater_is_better > 0:
                 best_val_auc = metric_i
                 best_epoch = idx
         for _ in metrics:
@@ -161,14 +166,27 @@ if not args.eval:
 
 
     log_train()
+
+
 else:
     logging.info("---------------------------evaluating---------------------------------")
-    evaluate(
-        model=model,
-        data_loaders=data_loaders,
-        loss_func=kt_loss,
-        cuda=args.cuda
-    )
+
+    # evaluate(
+    #     model=model,
+    #     data_loaders=data_loaders,
+    #     loss_func=kt_loss,
+    #     cuda=args.cuda
+    # )
+    for data_loader in data_loaders.values():
+        metric_list = rank_data_performance(model=model,
+                                            data_loader=data_loader,
+                                            loss_func=kt_loss,
+                                            cuda=args.cuda)
+
+        for metric, seq_list in metric_list.items():
+            print(f"Rank the dataset sequences by {metric}")
+            for seq in seq_list:
+                pass
 
 # save training log, including essential config: dataset , model hyperparameters, best metrics
 

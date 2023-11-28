@@ -71,7 +71,10 @@ class AKT(nn.Module):
     def forward(self, q_data, qa_data, pid_data=None):
         # Batch First
 
+        assert q_data.max() < self.q_embed.weight.shape[0]
+        assert q_data.min() >= 0
         q_embed_data = self.q_embed(q_data)  # BS, seqlen,  d_model# c_ct
+
         assert self.separate_qa
         if self.separate_qa:
             # BS, seqlen, d_model #f_(ct,rt)
@@ -82,7 +85,6 @@ class AKT(nn.Module):
             qa_embed_data = self.qa_embed(qa_data)+q_embed_data
 
         if self.n_pid > 0:
-
             q_embed_diff_data = self.q_embed_diff(q_data)  # d_ct
             pid_embed_data = self.difficult_param(pid_data)  # uq
             q_embed_data = q_embed_data + pid_embed_data * \

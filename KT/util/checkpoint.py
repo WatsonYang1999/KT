@@ -2,6 +2,7 @@ import os
 
 import torch
 from KT.models.SAKT import SAKT
+import copy
 
 class CheckpointManager:
     def __init__(self, save_dir='checkpoints'):
@@ -127,12 +128,12 @@ class CheckpointManager:
                 checkpoint = torch.load(checkpoint_path)
             else:
                 checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
-
+            print(checkpoint)
             model.load_state_dict(checkpoint['model_state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
             epoch = checkpoint['epoch']
-            assert epoch > 0
+            assert epoch >= 0
             return model, optimizer, epoch
         else:
             print("Failed to load")
