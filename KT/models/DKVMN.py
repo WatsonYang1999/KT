@@ -208,6 +208,7 @@ class DKVMN(nn.Module):
 
 
     def forward(self, q_data, qa_data,pid_data, target,student_id=None):
+
         seqlen = q_data.shape[1]
         batch_size = q_data.shape[0]
         target_2d = target.reshape(batch_size,-1)
@@ -373,24 +374,6 @@ if __name__=='__main__':
                   memory_key_state_dim=q_embed_dim,
                   memory_value_state_dim=qa_embed_dim,
                   final_fc_dim=final_fc_dim)
-    def count_model_parameters(model: torch.nn.Module):
-        param_count = 0
-        for param in model.parameters():
-            param_count += param.nelement()
-
-        for buffer in model.buffers():
-            param_count += buffer.nelement()
-        print('model parameter number: {:.3f}M'.format(param_count / 1000000))
-    def get_model_size(model: torch.nn.Module):
-        param_size = 0
-        for param in model.parameters():
-            param_size += param.nelement() * param.element_size()
-        buffer_size = 0
-        for buffer in model.buffers():
-            buffer_size += buffer.nelement() * buffer.element_size()
-
-        size_all_mb = (param_size + buffer_size) / 1024 ** 2
-        print('model size: {:.3f}MB'.format(size_all_mb))
 
     count_model_parameters(model)
     get_model_size(model)

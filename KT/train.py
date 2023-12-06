@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
+from tqdm import tqdm
 
 
 def inference(features, questions, skills, labels, seq_len, model, loss_func):
@@ -31,8 +32,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
         loss_kt = loss_kt + l2_lambda * l2_norm
 
     elif model._get_name() in {'DKVMN', 'DKVMN_RE'}:
-
-        loss_kt, filtered_pred, filtered_target = model.forward(skills, features, questions, labels.reshape(-1, 1))
+        loss_kt, filtered_pred, filtered_target = model.forward(questions, features, labels.reshape(-1, 1))
         from sklearn.metrics import roc_auc_score, accuracy_score
         filtered_target = filtered_target.cpu().detach().numpy()
         filtered_pred = filtered_pred.cpu().detach().numpy()
@@ -40,7 +40,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
         filtered_pred[filtered_pred >= 0.5] = 1.0
         filtered_pred[filtered_pred < 0.5] = 0.0
         acc = accuracy_score(filtered_target, filtered_pred)
-
+        exit(-1)
     elif model._get_name() == 'GKT':
         pred, ec_list, rec_list, z_prob_list = model(features, questions)
         loss_kt, auc, acc = loss_func(pred, labels)
@@ -61,11 +61,13 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
             pred = model(features, questions)
         else:
             pred = model(features, questions, labels)
+
         loss_kt, auc, acc = loss_func(pred, labels)
-        print(loss_kt)
+
+
     elif model._get_name() == 'AKT':
         s_num = model.n_question
-        correct = (labels ==1)
+        correct = (labels == 1)
         features = skills + correct.to(dtype=torch.int32) * s_num
 
         pred, c_loss = model(
@@ -87,14 +89,13 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     loss_train = []
     auc_train = []
     acc_train = []
-    for batch_idx, batch in enumerate(data_loader):
+    for batch in tqdm(data_loader, desc="Training batches", leave=False, ncols=80):
         features, questions, skills, labels, seq_len = batch
+
         if cuda:
             features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
 
         loss_kt, auc, acc = inference(features, questions, skills, labels, seq_len, model, loss_func)
-        print(loss_kt, auc, acc)
-        assert not torch.isnan(loss_kt)
         loss_train.append(loss_kt.cpu().detach().numpy())
         auc_train.append(auc)
         acc_train.append(acc)
@@ -127,8 +128,8 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
     optimizer_file = save_dir + '/' + 'opt.pt'
 
     with torch.no_grad():
-        for batch_idx, batch in enumerate(data_loader):
 
+        for batch_idx, batch in tqdm(enumerate(data_loader), desc="Validating batches", unit="iteration", ncols=80):
             features, questions, skills, labels, seq_len = batch
             if cuda:
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
@@ -271,12 +272,81 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
     # evaluate the test dataset
 
 
+def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
+    for dataset_type, data_loader in data_loaders.items():
+        print(f'evaluating dataset : {dataset_type}')
+
+        loss_train = []
+        auc_train = []
+        acc_train = []
+
+        for batch_idx, batch in enumerate(data_loader):
+            features, questions, skills, labels, seq_len = batch
+            if cuda:
+                features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
+            pred = model(questions, features)
+
+            loss_kt, auc, acc = loss_func(pred, labels)
+            print(loss_kt)
+            print(auc)
+            print(acc)
+    # input_len = features.shape[1]
+    # batch_size = features.shape[0]
+    #
+    # if input_len < model.seq_len:
+    #     pad_len = model.seq_len - input_len
+    #     features = torch.cat((features, -1 + torch.zeros([batch_size, pad_len])), dim=1)
+    #     questions = torch.cat((questions, -1 + torch.zeros([batch_size, pad_len])), dim=1)
+    #
+    #     labels = torch.cat((labels, -1 + torch.zeros([batch_size, pad_len])), dim=1)
+    # features = features[:, :model.seq_len].long()
+    # questions = questions[:, :model.seq_len].long()
+    # labels = labels[:, :model.seq_len]
+    # if model._get_name() == 'SAKT':
+    #     pred = model(features, questions)
+    # else:
+    #     pred = model(features, questions, labels)
+    #
+    # loss_kt, auc, acc = loss_func(pred, labels)
+
+
+def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
+    for dataset_type, data_loader in data_loaders.items():
+        print(f'evaluating dataset : {dataset_type}')
+
+        loss_train = []
+        auc_train = []
+        acc_train = []
+
+        for batch_idx, batch in enumerate(data_loader):
+
+            features, questions, skills, labels, seq_len = batch
+            if cuda:
+                features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
+            print(features)
+            print(questions)
+            print(labels)
+            exit(-1)
+            pred = model(features, questions, labels)
+
+            loss_kt, auc, acc = loss_func(pred, labels)
+            print(loss_kt)
+            print(auc)
+            print(acc)
+
+
 def evaluate(model: nn.Module, data_loaders, loss_func, cuda=False):
     model.eval()
 
     with torch.no_grad():
         if model._get_name() == 'AKT':
             evaluate_akt(model, data_loaders, loss_func, cuda)
+
+        if model._get_name() == 'SAKT_SKILL':
+            evaluate_sakt_skill(model, data_loaders, loss_func, cuda)
+
+        if model._get_name() == 'SAKT':
+            evaluate_sakt(model, data_loaders, loss_func, cuda)
 
 
 from torch import cuda

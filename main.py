@@ -8,8 +8,10 @@ import torch
 from KT.models.Loss import KTLoss
 from KT.models.Pretrain import embedding_pretrain
 from KT.train import train, evaluate, rank_data_performance
-from KT.utils import load_model, load_dataset, reformat_datatime
+from KT.utils import load_model, load_dataset, reformat_datatime, get_model_size
 
+import time
+# time.sleep(60 * 15)
 
 def set_parser():
     def str_to_bool(s):
@@ -46,10 +48,12 @@ def set_parser():
 
     parser.add_argument('--eval', type=str_to_bool, default='False',
                         help='Evaluate model to find some interesting insights')
+    parser.add_argument('--custom_data', type=str_to_bool, default='False',
+                        help='Use your own custom data')
 
     parser.add_argument('--lr', type=float, default=0.0001, help='Initial learning rate.')
     parser.add_argument('--current_epoch', type=int, default=0)
-    parser.add_argument('--n_epochs', type=int, default=200, help='Total Epochs.')
+    parser.add_argument('--n_epochs', type=int, default=20, help='Total Epochs.')
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--max_seq_len', type=int, default=200)
     parser.add_argument('--shuffle', type=str_to_bool, default='False')
@@ -83,8 +87,7 @@ parser = set_parser()
 args = parser.parse_args()
 if args.cuda:
     assert torch.cuda.is_available()
-args.cuda = torch.cuda.is_available()
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda' if args.cuda else 'cpu')
 args.device = device
 
 args.checkpoint_dir = os.path.join(os.getcwd(), 'checkpoints')
@@ -108,7 +111,7 @@ elif args.pretrain == 'load':
 model, optimizer = load_model(args)
 
 model = model.to(args.device)
-
+get_model_size(model)
 kt_loss = KTLoss()
 
 
@@ -167,26 +170,26 @@ if not args.eval:
 
     log_train()
 
-
 else:
     logging.info("---------------------------evaluating---------------------------------")
 
-    # evaluate(
-    #     model=model,
-    #     data_loaders=data_loaders,
-    #     loss_func=kt_loss,
-    #     cuda=args.cuda
-    # )
-    for data_loader in data_loaders.values():
-        metric_list = rank_data_performance(model=model,
-                                            data_loader=data_loader,
-                                            loss_func=kt_loss,
-                                            cuda=args.cuda)
-
-        for metric, seq_list in metric_list.items():
-            print(f"Rank the dataset sequences by {metric}")
-            for seq in seq_list:
-                pass
+    custom_data_loaders = {'custom_dataset': test_loader}
+    evaluate(
+        model=model,
+        data_loaders=custom_data_loaders,
+        loss_func=kt_loss,
+        cuda=args.cuda
+    )
+    # for data_loader in data_loaders.values():
+    #     metric_list = rank_data_performance(model=model,
+    #                                         data_loader=data_loader,
+    #                                         loss_func=kt_loss,
+    #                                         cuda=args.cuda)
+    #
+    #     for metric, seq_list in metric_list.items():
+    #         print(f"Rank the dataset sequences by {metric}")
+    #         for seq in seq_list:
+    #             pass
 
 # save training log, including essential config: dataset , model hyperparameters, best metrics
 

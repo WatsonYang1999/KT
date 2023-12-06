@@ -70,7 +70,9 @@ class KTDataset(Dataset):
         print(self.questions)
         assert questions.shape == answers.shape
         self.features = answers_one * self.q_num + self.questions
-        print(type(self.features))
+        print(self.features)
+        assert np.max(self.answers) <=1
+        assert np.min(self.answers) >=-1
         # this loading process is way fucking too slow that can be optimized greatly
 
 

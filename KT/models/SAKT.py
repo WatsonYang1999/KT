@@ -116,25 +116,26 @@ class SAKT_SKILL(nn.Module):
         self.dropout = dropout
 
     def set_qs_matrix(self, qs_matrix):
-        self.qs_matrix = qs_matrix  # [q_num,s_num]
-
         self.s_num = qs_matrix.shape[1]
         self.dim = self.s_num
         q_num = self.q_num
-        embed_dim = self.s_num
+        embed_dim = self.s_num * 2
         seq_len = self.seq_len
         dropout = self.dropout
         heads = self.heads
-        q_embed_weight = torch.FloatTensor(qs_matrix)
-        qa_embed_weight = torch.concat([torch.zeros_like(q_embed_weight), q_embed_weight])
-        print(qa_embed_weight.shape)
-        print(qa_embed_weight.shape)
+        q_embed_weight = torch.FloatTensor(qs_matrix)  # [q_num+1,s_num]
+        # Concatenate matrices as [[A, B], [B, A]]
+        zero_matrix = torch.zeros_like(q_embed_weight)
 
+        qa_embed_weight = torch.cat((torch.cat((q_embed_weight, zero_matrix), axis=1),
+                                     torch.cat((zero_matrix, q_embed_weight), axis=1)), axis=0)
+        q_embed_weight = torch.cat((q_embed_weight, zero_matrix), axis=1)
+        print(qa_embed_weight.shape)
+        print(q_embed_weight.shape)
         self.embd_qa = nn.Embedding(2 * q_num, embedding_dim=embed_dim)  # Interaction embedding
         self.embd_q = nn.Embedding(q_num, embedding_dim=embed_dim)  # Exercise embedding
-        self.embd_q.weight = nn.Parameter(q_embed_weight,requires_grad=False)
-        self.embd_qa.weight = nn.Parameter(qa_embed_weight,requires_grad=False)
-
+        self.embd_q.weight = nn.Parameter(q_embed_weight, requires_grad=False)
+        self.embd_qa.weight = nn.Parameter(qa_embed_weight, requires_grad=False)
 
         self.embd_pos = nn.Embedding(seq_len, embedding_dim=embed_dim)
 
@@ -164,9 +165,10 @@ class SAKT_SKILL(nn.Module):
 
         # get the interaction embedding output
         out_in = self.embd_qa(input_in)  # (b, n) --> (b,n,d)
+
         out_in = out_in + pos_in
 
-        ## split the interaction embeding into v and k ( needs to verify if it is slpited or not)
+        # split the interaction embeding into v and k ( needs to verify if it is slpited or not)
         value_in = out_in
         key_in = out_in  # print('v,k ', value_in.shape)
 
@@ -174,7 +176,7 @@ class SAKT_SKILL(nn.Module):
 
         query_ex = self.embd_q(input_ex)  # (b,n) --> (b,n,d) #print(query_ex.shape)
 
-        # Linearly project all the embedings
+        # Linearly project all the embeddings
         value_in = self.linear[0](value_in).permute(1, 0, 2)  # (b,n,d) --> (n,b,d)
         key_in = self.linear[1](key_in).permute(1, 0, 2)
         query_ex = self.linear[2](query_ex).permute(1, 0, 2)
@@ -185,7 +187,7 @@ class SAKT_SKILL(nn.Module):
                 'bool')).to(device)
         atn_out, _ = self.attn(query_ex, key_in, value_in,
                                attn_mask=attn_mask)  # lower triangular mask, bool, torch    (n,b,d)
-        atn_out = query_ex + atn_out  # Residual connection ; added excercise embd as residual because previous ex may have imp info, suggested in paper.
+        atn_out = query_ex + atn_out  # Residual connection ; added exercise embd as residual because previous ex may have imp info, suggested in paper.
         atn_out = self.layer_norm1(
             atn_out)  # Layer norm                        #print('atn',atn_out.shape) #n,b,d = atn_out.shape
 
@@ -208,7 +210,7 @@ class SAKT_SKILL(nn.Module):
         # (n,b,d) -->    .view([n*b ,d]) is not needed according to the kaggle implementation
         ffn_out = self.layer_norm2(ffn_out + atn_out)  # Layer norm and Residual connection
 
-        ## sigmoid
+        # sigmoid
         ffn_out = torch.sigmoid(self.linear_out(ffn_out))
         ffn_out = ffn_out.sum(dim=-1)
 
@@ -234,8 +236,8 @@ if __name__ == '__main__':
         return input_in, input_in
 
 
-    ## Testing the model
-    E = 50  # total unique excercises
+    # Testing the model
+    E = 50  # total unique exercises
     d = 128  # latent dimension
     n = 12  # sequence length
 

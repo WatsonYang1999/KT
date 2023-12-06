@@ -39,7 +39,7 @@ class AKT(nn.Module):
         self.final_fc_dim = final_fc_dim
         self.d_ff = d_ff
         embed_l = d_model
-        self.n_pid = 0
+
         if self.n_pid > 0:
             self.difficult_param = nn.Embedding(self.n_pid+1, 1)
             self.q_embed_diff = nn.Embedding(self.n_question+1, embed_l)
@@ -70,7 +70,7 @@ class AKT(nn.Module):
 
     def forward(self, q_data, qa_data, pid_data=None):
         # Batch First
-
+        print(q_data.max())
         assert q_data.max() < self.q_embed.weight.shape[0]
         assert q_data.min() >= 0
         q_embed_data = self.q_embed(q_data)  # BS, seqlen,  d_model# c_ct

@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from datetime import datetime
 
 import numpy
@@ -8,6 +9,37 @@ import torch
 from torch.utils.data import DataLoader, random_split
 
 from KT.KTDataloader import KTDataset, KTDataset_SA
+
+
+def pad(target, value, max_len):
+    for idx, pad_seq in enumerate(target):
+        if len(target[idx]) > max_len:
+            target[idx] = target[idx][:max_len]
+        else:
+            pad_len = max_len - len(pad_seq)
+            target[idx] = pad_seq + [value for i in range(pad_len)]
+
+
+def count_model_parameters(model: torch.nn.Module):
+    param_count = 0
+    for param in model.parameters():
+        param_count += param.nelement()
+
+    for buffer in model.buffers():
+        param_count += buffer.nelement()
+    print('model parameter number: {:.3f}M'.format(param_count / 1000000))
+
+
+def get_model_size(model: torch.nn.Module):
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    size_all_mb = (param_size + buffer_size) / 1024 ** 2
+    print('model size: {:.3f}MB'.format(size_all_mb))
 
 
 def reformat_datatime(dt: datetime):
@@ -25,9 +57,12 @@ def check_gpu_memory_allocated():
 
 
 # divide train test set
-def train_test_split(data, split=0.8):
+def train_test_split(data, split=0.8, random_split=True):
     n_samples = data[0].shape[0]
-    indices = np.random.permutation(n_samples)
+    if random_split:
+        indices = np.random.permutation(n_samples)
+    else:
+        indices = [i for i in range(0, n_samples)]
     split_point = int(n_samples * split)
     train_data, test_data = [], []
     for d in data:
@@ -146,33 +181,20 @@ def load_assist09_s(args):
     test_size = dataset_size - train_size
 
     train_set, test_set = random_split(kt_dataset, [train_size, test_size])
-    if args.data_augment:
-        print('We are augmenting the dataset')
-        print('Before augmentation the size of trainset is ', len(train_set))
-        train_set = train_set.dataset
-        train_set.print()
-        train_set.augment()
-        print('After Augmentation: -----------------------')
-        train_set.print()
-        print(type(train_set))
-        train_set, _ = random_split(train_set, [len(train_set), 0])
-        print('After the augmentation the size of trainset is ', len(train_set))
-    if False:
-        test_set.purify()
-
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=data_shuffle)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=data_shuffle)
-
-    print(train_loader)
-    print(test_loader)
-
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
+    qs_matrix = None
+    return train_set, test_set, qs_matrix
 
 
 def load_ednet_re(args):
     data_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data'
 
-    strategy = 'first_select'
+    skill_select_strategy = 'first_select'
+    # skill_select_strategy = 'total_random'
+    # skill_select_strategy = 'related_random'
+    # skill_select_strategy = 'most_frequent'
+    # dataset_scale = 'mini'
+    dataset_scale = 'full'
+    min_seq_len = 5
 
     def cut_seq(seqs, max_len):
         '''
@@ -191,50 +213,92 @@ def load_ednet_re(args):
                 return seq + [pad_value for _ in range(0, max_len - len(seq))]
             return seq[:max_len]
 
-        for uid, seqs in seqs.items():
+        from tqdm import tqdm
+        i = 0
+        mini_size = 3000
+        for uid, seqs in tqdm(seqs.items(), desc="Processing", unit="iteration", ncols=80):
 
             q_seq = seqs['question']
             a_seq = seqs['result']
+            seq_len = min(len(q_seq), max_len)
+            break_into_multi_seqs = False
+            if seq_len < min_seq_len:
+                break
 
             def select_skill(question):
-                if strategy == 'first_select':
+                if skill_select_strategy == 'first_select':
                     return list(qs_mapping[question])[0]
 
-            s_seq = [select_skill(q) for q in q_seq]
+            if skill_select_strategy == 'total_random':
 
-            seq_len = min(len(q_seq), max_len)
+                random_skill_list = random.choices(list(sq_mapping.keys()), k=len(q_seq))
+                s_seq = random_skill_list
+
+            else:
+                s_seq = [select_skill(q) for q in q_seq]
+
             q_seq_list.append(pad(q_seq, max_len, q_padding))
             y_seq_list.append(pad(a_seq, max_len, y_padding))
             s_seq_list.append(pad(s_seq, max_len, s_padding))
             seq_len_list.append(seq_len)
+            i += 1
+            if dataset_scale == 'mini':
+                if i > mini_size:
+                    break
         return np.array(q_seq_list, dtype=int), np.array(s_seq_list, dtype=int), np.array(y_seq_list,
                                                                                           dtype=float), np.array(
             seq_len_list, dtype=int)
 
-    preprocessed_dataset = 'ednet-re-' + strategy + '.npz'
+    load_custom = args.custom_data
+    custom_dataset = os.path.join(data_path, 'custom_data', 'custom_data_1.npz')
+    preprocessed_dataset = 'ednet-re-' + dataset_scale + '_' + skill_select_strategy + '.npz'
+
     if not os.path.exists(os.path.join(data_path, preprocessed_dataset)):
+
         from KT.dataset_loader.ednet_re import build_user_sequences, load_qs_relations, load_knowledge_structure, \
             frequency_count
         train_task1_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\train_data\train_task_1_2.csv'
         test_task1_public_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\test_data\test_public_answers_task_1_2.csv'
         skill_metadata_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\subject_metadata.csv'
-
-        train_seqs = build_user_sequences(train_task1_path)
-        test_public_seqs = build_user_sequences(test_task1_public_path)
+        custom_task1_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\custom_data\custom_task_1.csv'
+        total_data_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\total_time_ordered.csv'
         qs_mapping, sq_mapping = load_qs_relations()
+        if load_custom:
+            custom_seqs = build_user_sequences(custom_task1_path)
+
+            custom_q, custom_s, custom_y, custom_real_len = cut_seq(custom_seqs, args.max_seq_len)
+
+            np.savez(
+                custom_dataset,
+                q_num=len(qs_mapping),
+                s_num=len(sq_mapping),
+                q=custom_q,
+                s=custom_s,
+                y=custom_y,
+                seq_len=custom_real_len,
+                qs_mapping=qs_mapping,
+                sq_mapping=sq_mapping
+            )
+
+        # train_seqs = build_user_sequences(train_task1_path)
+        # test_public_seqs = build_user_sequences(test_task1_public_path)
+        total_seqs = build_user_sequences(total_data_path)
         args.q_num = len(qs_mapping)
         args.s_num = len(sq_mapping)
-        train_q, train_s, train_y, train_real_len = cut_seq(train_seqs, args.max_seq_len)
-        assert train_q.shape == train_y.shape
-
-        test_q, test_s, test_y, test_real_len = cut_seq(test_public_seqs, args.max_seq_len)
-
-        assert test_q.shape == test_y.shape
-        q_merged = np.vstack((train_q, test_q))
-        s_merged = np.vstack((train_s, test_s))
-        y_merged = np.vstack((train_y, test_y))
-        real_len_merged = np.hstack((train_real_len, test_real_len))
-
+        # train_q, train_s, train_y, train_real_len = cut_seq(train_seqs, args.max_seq_len)
+        # assert train_q.shape == train_y.shape
+        #
+        # test_q, test_s, test_y, test_real_len = cut_seq(test_public_seqs, args.max_seq_len)
+        #
+        # assert test_q.shape == test_y.shape
+        # q_merged = np.vstack((train_q, test_q))
+        # s_merged = np.vstack((train_s, test_s))
+        # y_merged = np.vstack((train_y, test_y))
+        # real_len_merged = np.hstack((train_real_len, test_real_len))
+        q_merged, s_merged, y_merged, real_len_merged = cut_seq(total_seqs, args.max_seq_len)
+        train_data, test_data = train_test_split([y_merged, s_merged, q_merged, real_len_merged],random_split=False)
+        train_y, train_s, train_q, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
+        test_y, test_s, test_q, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
         np.savez(
             os.path.join(data_path, preprocessed_dataset),
             q_num=len(qs_mapping),
@@ -246,37 +310,35 @@ def load_ednet_re(args):
             qs_mapping=qs_mapping,
             sq_mapping=sq_mapping
         )
+
     else:
-        data = np.load(os.path.join(data_path, preprocessed_dataset),allow_pickle=True)
+        data = np.load(os.path.join(data_path, preprocessed_dataset), allow_pickle=True)
         y, skill, problem, real_len = data['y'], data['s'], data['q'], data['seq_len']
 
         args.s_num, args.q_num = int(data['s_num']), int(data['q_num'])
 
-        train_data, test_data = train_test_split([y, skill, problem, real_len])
+        train_data, test_data = train_test_split([y, skill, problem, real_len],random_split=False)
         train_y, train_s, train_q, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
         test_y, test_s, test_q, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
         # very ugly idea
         qs_mapping = eval(data['qs_mapping'].__str__())
         sq_mapping = eval(data['sq_mapping'].__str__())
-    print(qs_mapping)
-    print(type(qs_mapping))
+        if load_custom:
+            custom_data = np.load(os.path.join(data_path, custom_dataset), allow_pickle=True)
+            test_y, test_s, test_q, test_real_len = custom_data['y'], custom_data['s'], custom_data['q'], custom_data[
+                'seq_len']
+            print(test_q)
+
     train_set = KTDataset(args.q_num, args.s_num, train_q, train_s, train_y, train_real_len, args.max_seq_len,
                           qs_mapping,
                           sq_mapping)
 
     test_set = KTDataset(args.q_num, args.s_num, test_q, test_s, test_y, test_real_len, args.max_seq_len, qs_mapping,
                          sq_mapping)
+
     print("Done Loading Datasets")
-    if args.data_augment:
-        print('Use Data Augmentation')
-        train_set.augment()
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
-    '''
-        Modification Required
-        need a better way to load qs_matrix cuz the original file is like a crap of shit 
-    '''
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': train_set.get_qs_matrix()}
+    qs_matrix = train_set.get_qs_matrix()
+    return train_set, test_set, qs_matrix
 
 
 def load_assist09_q(args):
@@ -294,16 +356,9 @@ def load_assist09_q(args):
                           max_seq_len=args.max_seq_len)
     test_set = KTDataset(args.q_num, args.s_num, test_problem, test_skill, test_y, test_real_len,
                          max_seq_len=args.max_seq_len)
-    if args.data_augment:
-        print('Use Data Augmentation')
-        train_set.augment()
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
-    '''
-        Modification Required
-        need a better way to load qs_matrix cuz the original file is like a crap of shit 
-    '''
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
+    # todo : load qs_matrix
+    qs_matrix = None
+    return train_set, test_set, qs_matrix
 
 
 def load_assist17_s(args):
@@ -341,10 +396,8 @@ def load_assist17_s(args):
     test_set = KTDataset_SA(args.q_num, args.s_num, test_problem, test_skill, test_y, test_real_len,
                             max_seq_len=args.max_seq_len)
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
-
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
+    qs_matrix = None
+    return train_set, test_set, qs_matrix
 
 
 def load_buaa(args):
@@ -384,16 +437,7 @@ def load_buaa(args):
                          answers=test_y,
                          seq_len=test_real_len,
                          max_seq_len=args.max_seq_len)
-    if args.data_augment:
-        print('Use Data Augmentation')
-        train_set.augment()
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
-    '''
-        Modification Required
-        need a better way to load qs_matrix cuz the original file is like a crap of shit 
-    '''
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': q_matrix}
+    return train_set, test_set, q_matrix
 
 
 def load_junyi(args):
@@ -503,27 +547,9 @@ def load_junyi(args):
     test_size = dataset_size - train_size
 
     train_set, test_set = random_split(kt_dataset, [train_size, test_size])
-    if args.data_augment:
-        print('We are augmenting the dataset')
-        print('Before augmentation the size of trainset is ', len(train_set))
-        train_set = train_set.dataset
-        train_set.print()
-        train_set.augment()
-        print('After Augmentation: -----------------------')
-        train_set.print()
-        print(type(train_set))
-        train_set, _ = random_split(train_set, [len(train_set), 0])
-        print('After the augmentation the size of trainset is ', len(train_set))
-    if False:
-        test_set.purify()
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=data_shuffle)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=data_shuffle)
-
-    print(train_loader)
-    print(test_loader)
-
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
+    qs_matrix = None
+    return train_set, test_set, qs_matrix
 
 
 def load_junyi2(args):
@@ -560,15 +586,6 @@ def load_junyi2(args):
         for j in range(len(f_seq)):
             assert f_seq[j] == a_seq[j] * question_num + q_seq[j]
 
-    def pad(target, value, max_len):
-        for idx, pad_seq in enumerate(target):
-            if len(target[idx]) > args.max_seq_len:
-                print(len(target[idx]))
-                target[idx] = target[idx][:args.max_seq_len]
-            else:
-                pad_len = max_len - len(pad_seq)
-                target[idx] = pad_seq + [value for i in range(pad_len)]
-
     pad(question_list, 0, args.max_seq_len)
 
     pad(answer_list, -1, args.max_seq_len)
@@ -588,59 +605,56 @@ def load_junyi2(args):
     test_size = dataset_size - train_size
 
     train_set, test_set = random_split(kt_dataset, [train_size, test_size])
-    if args.data_augment:
-        print('We are augmenting the dataset')
-        print('Before augmentation the size of trainset is ', len(train_set))
-        train_set = train_set.dataset
-        train_set.print()
-        train_set.augment()
-        print('After Augmentation: -----------------------')
-        train_set.print()
-        print(type(train_set))
-        train_set, _ = random_split(train_set, [len(train_set), 0])
-        print('After the augmentation the size of trainset is ', len(train_set))
-    if False:
-        test_set.purify()
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=data_shuffle)
-    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=data_shuffle)
-
-    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': None}
+    # todo : load qs_matrix
+    qs_matrix = None
+    return train_set, test_set, qs_matrix
 
 
 def load_dataset(args):
     if args.dataset == 'assist09-q':
 
-        return load_assist09_q(args)
+        train_set, test_set, qs_matrix = load_assist09_q(args)
     elif args.dataset == 'assist09-s':
-        return load_assist09_s(args)
+        train_set, test_set, qs_matrix = load_assist09_s(args)
     elif args.dataset == 'assist17-s':
-        return load_assist17_s(args)
+        train_set, test_set, qs_matrix = load_assist17_s(args)
     elif args.dataset == 'beihang':
-        return load_buaa(args)
+        train_set, test_set, qs_matrix = load_buaa(args)
     elif args.dataset == 'buaa18a':
         pass
     elif args.dataset == 'buaa18s':
         pass
     elif args.dataset == 'ednet-qs':
         from KT.dataset_loader.ednet import load_ednet_qs
-        return load_ednet_qs(args)
+        train_set, test_set, qs_matrix = load_ednet_qs(args)
     elif args.dataset == 'ednet-re':
-        return load_ednet_re(args)
+        train_set, test_set, qs_matrix = load_ednet_re(args)
     elif args.dataset == 'ednet':
         from KT.dataset_loader.ednet import load_ednet
-        return load_ednet(args)
+        train_set, test_set, qs_matrix = load_ednet(args)
     elif args.dataset == 'junyi':
-        return load_junyi(args)
+        train_set, test_set, qs_matrix = load_junyi(args)
     elif args.dataset == 'junyi2':
-        return load_junyi2(args)
+        train_set, test_set, qs_matrix = load_junyi2(args)
     else:
-        pass
+        train_set = None
+        test_set = None
+        qs_matrix = None
 
     ratio = [0.7, 0.25, 0.05]
     # if dataset_info['s_graph'] != 'False':
     #     s_graph = np.load(dataset_info['s_graph'])
-    pass
+    if args.data_augment:
+        print('Use Data Augmentation')
+        train_set.augment()
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=args.shuffle)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=args.shuffle)
+    '''
+        Modification Required
+        need a better way to load qs_matrix cuz the original file is like a crap of shit 
+    '''
+    return {'train_loader': train_loader, 'test_loader': test_loader, 'qs_matrix': qs_matrix}
 
 
 def load_model(args):
@@ -805,6 +819,10 @@ def load_model(args):
         print(f"Successfully load checkpoint {args.checkpoint_dir} from epoch {args.current_epoch}")
 
     return model, optimizer
+
+
+def observe_similar_question_improvement(args, target_q, target_s):
+    pass
 
 
 if __name__ == '__main__':
