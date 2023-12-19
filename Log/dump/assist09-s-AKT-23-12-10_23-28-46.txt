@@ -1,0 +1,3 @@
+2023-12-10 23:28:46,127 [INFO] Namespace(batch_size=256, checkpoint_dir='C:\\Users\\12574\\Desktop\\KT-Refine\\checkpoints', cuda=True, current_epoch=28, custom_data=False, data_augment=False, dataset='assist09-s', device=device(type='cuda'), dropout=0.2, edge_types=2, embed_dim=128, eval=True, graph_type='Dense', hidden_dim=50, log_file='', lr=0.0001, max_seq_len=200, memory_size=20, model='AKT', n_epochs=20, n_heads=4, output_dim=100, pretrain='no', pretrain_embed_file='', q_num=117, qs_matrix=None, s_num=117, shuffle=False, train_from_scratch=False)
+2023-12-10 23:28:46,127 [INFO] -----------------------------------------------------------
+2023-12-10 23:28:46,127 [INFO] ---------------------------evaluating---------------------------------

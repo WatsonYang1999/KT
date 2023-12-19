@@ -1,0 +1,1 @@
+python main.py  --model %1 --dataset %2 --eval True

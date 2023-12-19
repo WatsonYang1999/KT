@@ -3,6 +3,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data import random_split
+import torch.nn.functional as F
 import numpy as np
 
 random_seed = 42
@@ -18,7 +19,7 @@ def build_dense_graph(node_num):
 
 class KTDataset(Dataset):
     def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len, qs_mapping=None, sq_mapping=None,
-                 remapping=True, item_start_from_one=True):
+                 remapping=False, item_start_from_one=True):
 
         super(KTDataset, self).__init__()
         self.q_num = q_num
@@ -35,6 +36,8 @@ class KTDataset(Dataset):
 
         self.qs_mapping = qs_mapping
         self.sq_mapping = sq_mapping
+        self.q_trans_graph = None
+        self.s_trans_graph = None
         if remapping:
             '''
                 remapping the qid and sid to [1,q_num] and [1,s_num]
@@ -67,10 +70,10 @@ class KTDataset(Dataset):
                     self.qs_matrix[qid_remapped,sid_remapped] = 1
 
         answers_one = (answers == 1.0)
-        print(self.questions)
+
         assert questions.shape == answers.shape
         self.features = answers_one * self.q_num + self.questions
-        print(self.features)
+
         assert np.max(self.answers) <=1
         assert np.min(self.answers) >=-1
         # this loading process is way fucking too slow that can be optimized greatly
@@ -196,9 +199,34 @@ class KTDataset(Dataset):
     def gen_skill_trans_graph(self):
         pass
 
-    def gen_question_trans_graph(self):
-        pass
+    def set_question_trans_graph(self,trans_matrix:torch.FloatTensor):
+        assert trans_matrix.shape[0] == trans_matrix.shape[1]
+        assert trans_matrix.shape[0] == self.q_num
+        self.q_trans_graph = trans_matrix
 
+    def get_question_trans_graph(self):
+        '''
+            Is it a valid approach to obtain trans-graph on both train and test set?
+        '''
+        if self.q_trans_graph is not None:
+            return self.q_trans_graph
+
+        self.q_trans_graph = torch.zeros([self.q_num,self.q_num])
+        data_num,seq_len = self.questions.shape
+
+        for i in range(data_num):
+            for j in range(seq_len-1):
+                qi = self.questions[i, j].int()
+                qj = self.questions[i][j + 1].int()
+                if qi == 0 or qj == 0:
+                    continue
+
+                self.q_trans_graph[qi - 1, qj - 1] += 1
+
+        row_sums = self.q_trans_graph.sum(dim = 1,keepdim=True)
+        self.q_trans_graph = self.q_trans_graph / row_sums.unsqueeze(-1)
+
+        return self.q_trans_graph
 
 class KTDataset_SA(KTDataset):
     def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len):
@@ -333,5 +361,39 @@ def preprocess():
         print("Ascending Sequence Count:", ascending_count)
 
 
+def test_get_question_trans_graph():
+    questions = torch.FloatTensor([
+        [1, 2, 3],
+        [1, 2, 1],
+        [2, 3, 1]
+    ])
+    target = torch.FloatTensor([
+        [1, 2, 3],
+        [1, 3, 1],
+        [2, 3, 1]
+    ])
+    q_num = 3
+    q_trans_graph = torch.zeros([q_num, q_num])
+    data_num, seq_len = questions.shape
+
+    for i in range(data_num):
+        for j in range(seq_len - 1):
+            qi = questions[i, j].int()
+            qj = questions[i][j+1].int()
+            if qi == 0 or qj == 0:
+                continue
+
+
+            q_trans_graph[qi-1, qj-1] += 1
+
+    row_sums = q_trans_graph.sum(dim=1)
+    print(q_trans_graph)
+    print(row_sums)
+    print(row_sums.unsqueeze(-1))
+    q_trans_graph = q_trans_graph / row_sums.unsqueeze(-1)
+
+    print(q_trans_graph)
+
+    assert q_trans_graph == target
 if __name__ == '__main__':
-    preprocess()
+    test_get_question_trans_graph()

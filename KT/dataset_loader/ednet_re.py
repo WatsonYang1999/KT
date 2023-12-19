@@ -4,7 +4,7 @@ from collections import defaultdict
 import numpy as np
 from typing import List
 from dataclasses import dataclass, field
-from pyvis.network import Network
+# from pyvis.network import Network
 
 
 def simple_observe(df: pd.DataFrame):
@@ -19,7 +19,6 @@ def build_user_sequences(file_path):
     except Exception as e:
         print(e)
         exit(-1)
-
 
     df_user_groups = df.groupby('UserId')
 
@@ -37,8 +36,8 @@ def build_user_sequences(file_path):
     return seqs
 
 
-def load_qs_relations():
-    df = pd.read_csv(r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\question_metadata_task_1_2.csv')
+def load_qs_relations(data_path = 'Dataset/ednet-re/data/metadata/question_metadata_task_1_2.csv'):
+    df = pd.read_csv(data_path)
     print(df)
     qs_mapping = {}
     sq_mapping = {}
@@ -60,129 +59,130 @@ def load_qs_relations():
     # print(sq_mapping)
     return qs_mapping, sq_mapping
 
+def load_knowledge_structure(data_path=r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\subject_metadata.csv'):
+    pass
+#
+#     df = pd.read_csv(data_path)
+#     print(df.columns)
+#     # df['SubjectId'] = df['SubjectId'].astype(int)
+#     # df['ParentId'] = df['ParentId'].astype(int)
+#     # create graph
+#     from dataclasses import dataclass
+#     @dataclass
+#     class SkillNode:
+#         sid: int
+#         sname: str
+#         level: int
+#         parent_id: int
+#         children: List = field(default_factory=lambda: [])
+#
+#         def add_child(self, child_node):
+#             self.children.append(child_node)
+#
+#     @dataclass
+#     class SkillTopoGraph:
+#         # from pyvis.network import Network
+#         nodes: dict = defaultdict
+#         root: SkillNode = None
+#         # vis_graph: Network = Network()
+#
+#         def build(self, df: pd.DataFrame):
+#             self.nodes = {}
+#             for idx, row in df.iterrows():
+#                 sid = int(row['SubjectId'])
+#                 s_name = row['Name']
+#                 if pd.isna(row['ParentId']):
+#                     s_parent_id = None
+#                 else:
+#                     s_parent_id = int(row['ParentId'])
+#                 level = row['Level']
+#
+#                 self.nodes[sid] = SkillNode(sid, s_name, level, s_parent_id)
+#
+#             for idx, row in df.iterrows():
+#                 sid = int(row['SubjectId'])
+#
+#                 if pd.isna(row['ParentId']):
+#                     self.root = self.nodes[sid]
+#                 else:
+#                     s_parent_id = int(row['ParentId'])
+#                     parent_node = self.nodes[s_parent_id]
+#                     parent_node.add_child(self.nodes[sid])
+#
+#         def level_order_traversal(self):
+#
+#             print(f'total nodes {len(self.nodes)}')
+#
+#             leaves = []
+#             for node in self.nodes.values():
+#
+#                 if len(node.children) == 0:
+#                     leaves.append(node)
+#             print(f'leaves count {len(leaves)}')
+#
+#             if not self.root:
+#                 return []
+#             result = []
+#             queue = [self.root]
+#
+#             while queue:
+#                 current_node = queue.pop(0)
+#
+#                 result.append(current_node.sid)
+#                 queue.extend(current_node.children)
+#
+#             return result
+#
+#         def check_node_level_align(self):
+#             pass
+#
+#         def visualize(self):
+#             def visualize_tree(node, graph):
+#                 print(node, node.children)
+#                 if node is not None:
+#                     graph.add_node(node.sid, label=node.sname)
+#                     for child in node.children:
+#                         assert node.sid in self.nodes.keys()
+#                         assert child.sid in self.nodes.keys()
+#                         try:
+#                             graph.add_edge(node.sid, child.sid)
+#
+#                         except Exception as e:
+#                             graph.add_node(child.sid, label=child.sname)
+#
+#                         print(node.sid, child.sid)
+#                         visualize_tree(child, graph)
+#
+#             def wtf(graph):
+#                 skill_freq = frequency_count()
+#                 max_frequency = max(skill_freq.values())
+#                 for idx, row in df.iterrows():
+#                     sid = int(row['SubjectId'])
+#                     s_name = row['Name']
+#
+#                     color = f'rgba(255, 0, 0, {skill_freq[sid] / max_frequency/2 + 0.5})'
+#
+#                     graph.add_node(sid, label=s_name, color=color)
+#
+#                 for idx, row in df.iterrows():
+#                     sid = int(row['SubjectId'])
+#                     if not pd.isna(row['ParentId']):
+#                         s_parent_id = int(row['ParentId'])
+#                         graph.add_edge(s_parent_id, sid)
+#
+#             graph = Network(directed=True)
+#             wtf(graph)
+#             # graph.save_graph("tree_visualization.html")
+#             graph.show("tree_visualization.html")
+#
+#     skillgraph = SkillTopoGraph()
+#     skillgraph.build(df)
+#     # print(skillgraph.level_order_traversal())
+#     skillgraph.visualize()
 
-def load_knowledge_structure():
-    df = pd.read_csv(r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\subject_metadata.csv')
-    print(df.columns)
-    # df['SubjectId'] = df['SubjectId'].astype(int)
-    # df['ParentId'] = df['ParentId'].astype(int)
-    # create graph
-    from dataclasses import dataclass
-    @dataclass
-    class SkillNode:
-        sid: int
-        sname: str
-        level: int
-        parent_id: int
-        children: List = field(default_factory=lambda: [])
+def frequency_count(data_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\train_data\train_task_1_2.csv'):
 
-        def add_child(self, child_node):
-            self.children.append(child_node)
-
-    @dataclass
-    class SkillTopoGraph:
-        from pyvis.network import Network
-        nodes: dict = defaultdict
-        root: SkillNode = None
-        vis_graph: Network = Network()
-
-        def build(self, df: pd.DataFrame):
-            self.nodes = {}
-            for idx, row in df.iterrows():
-                sid = int(row['SubjectId'])
-                s_name = row['Name']
-                if pd.isna(row['ParentId']):
-                    s_parent_id = None
-                else:
-                    s_parent_id = int(row['ParentId'])
-                level = row['Level']
-
-                self.nodes[sid] = SkillNode(sid, s_name, level, s_parent_id)
-
-            for idx, row in df.iterrows():
-                sid = int(row['SubjectId'])
-
-                if pd.isna(row['ParentId']):
-                    self.root = self.nodes[sid]
-                else:
-                    s_parent_id = int(row['ParentId'])
-                    parent_node = self.nodes[s_parent_id]
-                    parent_node.add_child(self.nodes[sid])
-
-        def level_order_traversal(self):
-
-            print(f'total nodes {len(self.nodes)}')
-
-            leaves = []
-            for node in self.nodes.values():
-
-                if len(node.children) == 0:
-                    leaves.append(node)
-            print(f'leaves count {len(leaves)}')
-
-            if not self.root:
-                return []
-            result = []
-            queue = [self.root]
-
-            while queue:
-                current_node = queue.pop(0)
-
-                result.append(current_node.sid)
-                queue.extend(current_node.children)
-
-            return result
-
-        def check_node_level_align(self):
-            pass
-
-        def visualize(self):
-            def visualize_tree(node, graph):
-                print(node, node.children)
-                if node is not None:
-                    graph.add_node(node.sid, label=node.sname)
-                    for child in node.children:
-                        assert node.sid in self.nodes.keys()
-                        assert child.sid in self.nodes.keys()
-                        try:
-                            graph.add_edge(node.sid, child.sid)
-
-                        except Exception as e:
-                            graph.add_node(child.sid, label=child.sname)
-
-                        print(node.sid, child.sid)
-                        visualize_tree(child, graph)
-
-            def wtf(graph):
-                skill_freq = frequency_count()
-                max_frequency = max(skill_freq.values())
-                for idx, row in df.iterrows():
-                    sid = int(row['SubjectId'])
-                    s_name = row['Name']
-
-                    color = f'rgba(255, 0, 0, {skill_freq[sid] / max_frequency/2 + 0.5})'
-
-                    graph.add_node(sid, label=s_name, color=color)
-
-                for idx, row in df.iterrows():
-                    sid = int(row['SubjectId'])
-                    if not pd.isna(row['ParentId']):
-                        s_parent_id = int(row['ParentId'])
-                        graph.add_edge(s_parent_id, sid)
-
-            graph = Network(directed=True)
-            wtf(graph)
-            # graph.save_graph("tree_visualization.html")
-            graph.show("tree_visualization.html")
-
-    skillgraph = SkillTopoGraph()
-    skillgraph.build(df)
-    # print(skillgraph.level_order_traversal())
-    skillgraph.visualize()
-
-def frequency_count():
-    train_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\train_data\train_task_1_2.csv'
-    seqs = build_user_sequences(train_path)
+    seqs = build_user_sequences(data_path)
     qs_mapping, sq_mapping = load_qs_relations()
 
     skill_freq = {}

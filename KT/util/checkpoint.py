@@ -1,7 +1,7 @@
 import os
 
 import torch
-from KT.models.SAKT import SAKT
+
 import copy
 
 class CheckpointManager:
@@ -114,10 +114,10 @@ class CheckpointManager:
         checkpoint_files = os.listdir(directory)
 
         # Look for a checkpoint file matching the hyperparameters
-        print(hyperparam_str)
+
         matching_checkpoint = None
         for checkpoint_file in checkpoint_files:
-            print(checkpoint_file)
+
             if hyperparam_str == os.path.splitext(checkpoint_file)[0]:
                 matching_checkpoint = checkpoint_file
                 break
@@ -128,7 +128,7 @@ class CheckpointManager:
                 checkpoint = torch.load(checkpoint_path)
             else:
                 checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
-            print(checkpoint)
+
             model.load_state_dict(checkpoint['model_state_dict'])
             # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
@@ -140,6 +140,7 @@ class CheckpointManager:
             return "Failed to load", None, None
 
 if __name__ == '__main__':
+    from KT.models.SAKT import SAKT
 
     checkpoint_manager = CheckpointManager()
     model = SAKT(q_num=100, seq_len=200, embed_dim=50, heads=1,

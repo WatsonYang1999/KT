@@ -20,6 +20,13 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
         # l2_norm = sum(p.pow(2.0).sum()
         #               for p in model.parameters())
         # loss_kt = loss_kt + l2_lambda * l2_norm
+    elif model._get_name() == 'DKT_PLUS':
+        pred = model(questions, labels)
+        loss_kt, auc, acc = loss_func(pred, labels)
+        # l2_lambda = 0.00001
+        # l2_norm = sum(p.pow(2.0).sum()
+        #               for p in model.parameters())
+        # loss_kt = loss_kt + l2_lambda * l2_norm
     elif model._get_name() == 'QGKT':
 
         pred = model(features, questions, labels)
@@ -57,18 +64,16 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
         features = features[:, :model.seq_len].long()
         questions = questions[:, :model.seq_len].long()
         labels = labels[:, :model.seq_len]
-        if model._get_name() == 'SAKT':
-            pred = model(features, questions)
-        else:
-            pred = model(features, questions, labels)
+
+        pred = model(features, questions, labels)
 
         loss_kt, auc, acc = loss_func(pred, labels)
 
 
     elif model._get_name() == 'AKT':
-        s_num = model.n_question
+        s_num = model.s_num
         correct = (labels == 1)
-        features = skills + correct.to(dtype=torch.int32) * s_num
+        features =torch.IntTensor(skills.cpu().numpy() + correct.cpu().numpy() * s_num).to(skills.device)
 
         pred, c_loss = model(
             skills,
@@ -90,6 +95,7 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     auc_train = []
     acc_train = []
     for batch in tqdm(data_loader, desc="Training batches", leave=False, ncols=80):
+        optimizer.zero_grad()
         features, questions, skills, labels, seq_len = batch
 
         if cuda:
@@ -101,7 +107,7 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
         acc_train.append(acc)
 
         # print('batch idx: ', batch_idx, 'loss kt: ', loss_kt.item(), 'auc: ', auc, 'acc: ', acc)
-        optimizer.zero_grad()
+
         loss_kt.backward()
         optimizer.step()
         # torch.nn.utils.clip_grad_norm_(
@@ -114,6 +120,7 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     logs['train_loss'].append(np.mean(loss_train))
     logs['train_auc'].append(np.mean(auc_train))
     logs['train_acc'].append(np.mean(acc_train))
+
     return model, optimizer
 
 
@@ -163,7 +170,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     early_stop_interval = 25
     if args.current_epoch != 0:
         print(f"start training from previous checkpoints of epoch {args.current_epoch}")
-    for epoch in range(args.current_epoch, args.current_epoch + args.n_epochs):
+    for epoch in range(args.current_epoch + 1, args.current_epoch + args.n_epochs):
         print(f"epoch: {epoch}")
 
         train_epoch(model, data_loader=data_loaders['train_loader'], optimizer=optimizer,
@@ -216,9 +223,9 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     import matplotlib.pyplot as plt
 
     for m in metrics:
-        plt.plot(np.arange(0, args.n_epochs, dtype=int), logs[m], label=m)
+        plt.plot(np.arange(args.current_epoch, args.current_epoch + args.n_epochs, dtype=int), logs[m], label=m)
     plt.legend(loc="upper left", shadow=True, title=model._get_name(), fancybox=True)
-    # plt.show()
+    plt.show()
     # plot some figures here
     return logs
 
@@ -258,21 +265,254 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
     loss_train = []
     auc_train = []
     acc_train = []
-    for batch_idx, batch in enumerate(data_loaders['train_loader']):
-        features, questions, skills, labels, seq_len = batch
-        if cuda:
-            features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
-        pred = model(questions, features, labels)
+    s_num = model.s_num
 
-        loss_kt, auc, acc = loss_func(pred, labels)
-        print(loss_kt)
-        print(auc)
-        print(acc)
+    '''
+        generating sequences to observe relations between skills
+    '''
+    q_custom = []
+    y_custom = []
+    f_custom = []
+    for si in range(1, s_num + 1):
+        for sj in range(1, s_num + 1):
+            for ai in range(0, 2):
+                for aj in range(0, 2):
+                    fi = s_num * ai + si
+                    fj = s_num * aj + sj
+                    q_custom.append([si, sj])
+                    y_custom.append([ai, aj])
+                    f_custom.append([fi, fj])
+
+    q_custom = torch.IntTensor(q_custom)
+    y_custom = torch.FloatTensor(y_custom)
+    f_custom = torch.IntTensor(f_custom)
+
+    print(q_custom)
+    print(q_custom.shape)
+    custom_size = q_custom.shape[0]
+
+    max_seq_len = 200
+    pad_len = max_seq_len - q_custom.shape[1]
+
+    device = 'cuda:0'
+
+    q_custom = torch.cat([q_custom, torch.zeros([custom_size, pad_len], dtype=int)], dim=1).to(device)
+    y_custom = torch.cat([y_custom, -1 * torch.ones([custom_size, pad_len], dtype=float)], dim=1).to(device)
+    f_custom = torch.cat([f_custom, torch.zeros([custom_size, pad_len], dtype=int)], dim=1).to(device)
+
+    import matplotlib.pyplot as plt
+    co_relavance_upgrade = torch.zeros([s_num + 1, s_num + 1])
+    co_relavance_downgrade = torch.zeros([s_num + 1, s_num + 1])
+
+    def demo(matrix1, matrix2, matrix3):
+        # Create subplots with 1 row and 3 columns
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+        # Plot the first matrix
+        im1 = axes[0].imshow(matrix1, cmap='viridis')
+        axes[0].set_title('Matrix 1')
+
+        # Plot the second matrix
+        im2 = axes[1].imshow(matrix2, cmap='plasma')
+        axes[1].set_title('Matrix 2')
+
+        # Plot the third matrix
+        im3 = axes[2].imshow(matrix3, cmap='inferno')
+        axes[2].set_title('Matrix 3')
+
+        # Add colorbars
+        fig.colorbar(im1, ax=axes[0])
+        fig.colorbar(im2, ax=axes[1])
+        fig.colorbar(im3, ax=axes[2])
+
+        # Adjust layout for better spacing
+        plt.tight_layout()
+
+        # Show the plot
+        plt.show()
+
+    custom_bs = 10
+    batch_idx = 0
+    pred = None
+    while batch_idx < q_custom.shape[0]:
+        low = batch_idx
+        high = min(batch_idx + custom_bs, q_custom.shape[0])
+        q_in = q_custom[low:high, ]
+        f_in = f_custom[low:high, ]
+        y_in = y_custom[low:high, ]
+
+        pred_batch, _ = model(q_in, f_in, q_in)
+        batch_idx += custom_bs
+        pred = pred_batch if pred is None else torch.cat([pred, pred_batch], dim=0)
+    print(pred.shape)
+    exit(-1)
+    for i in range(s_num ** 2):
+        qi = q_custom[4 * i:4 * i + 4, :]
+        fi = f_custom[4 * i:4 * i + 4, :]
+        yi = y_custom[4 * i:4 * i + 4, :]
+        pred, _ = model(qi, fi, qi)
+        si = qi[0, 0].cpu().item()
+        sj = qi[0, 1].cpu().item()
+        print('question seq: ', qi[:, :4])
+        print('feature seq', fi[:, :4])
+        print('label seq', yi[:, :4])
+        co_relavance_downgrade[si, sj] = pred[0, 0]
+        co_relavance_upgrade[si, sj] = pred[2, 0]
+        print(
+            f'co_relavance for {[si, sj]}: update {co_relavance_upgrade[si, sj]} downgrade{co_relavance_downgrade[si, sj]}')
+
+    demo(co_relavance_downgrade.numpy(), co_relavance_upgrade.numpy(),
+         co_relavance_upgrade.numpy() - co_relavance_downgrade.numpy())
+
+    print(f'nums of skill {s_num}')
+    for dataset_type, data_loader in data_loaders.items():
+        print(f'evaluating AKT on dataset : {dataset_type}')
+
+        # for batch_idx, batch in enumerate(data_loader):
+        #     features, questions, skills, labels, seq_len = batch
+        #     batch_size = features.shape[0]
+        #     if cuda:
+        #         features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
+        #
+        #     pred,_ = model(questions, features, questions)
+        #     print(pred)
+        #     '''
+        #         question[i,0:j]
+        #         labels[i,0:j]
+        #         pred[i,j] : correct probability for questions[i,j+1]
+        #
+        #         evaluate the sequence into
+        #     '''
+        #
+        #     for i in range(batch_size):
+        #         seq_len_i = seq_len[i]
+        #         print('-------evaluating new sequence------------')
+        #         for j in range(0,seq_len_i-1):
+        #             print('-------------------')
+        #             print(f'q seq {questions[i,0:j].cpu().tolist()}')
+        #             print(f'a seq {labels[i,0:j].cpu().tolist()}')
+        #             print(f'f seq {features[i,0:j].cpu().tolist()}')
+        #             print(f'next q {questions[i,j+1]}')
+        #             print(f'prediction:{pred[i,j]}, true label:{labels[i,j+1]}')
+        #
+        #
+        #     loss_kt, auc, acc = loss_func(pred, labels)
+        #     print(loss_kt)
+        #     print(auc)
+        #     print(acc)
 
     # evaluate the test dataset
 
 
 def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
+    s_num = 117
+    q_custom = []
+    y_custom = []
+    f_custom = []
+    n = 1
+    for si in range(1, s_num + 1):
+        for sj in range(1, s_num + 1):
+            for ai in range(0, 2):
+                for aj in range(0, 2):
+
+                    fi = s_num * ai + si
+                    fj = s_num * aj + sj
+                    q_custom.append([si] * n + [sj] * n + [si] * n)
+                    y_custom.append([0] * n + [1] * n + [1] * n)
+                    f_custom.append([fi] * n + [fj] * n + [fi] * n)
+
+    q_custom = torch.IntTensor(q_custom)
+    y_custom = torch.FloatTensor(y_custom)
+    f_custom = torch.IntTensor(f_custom)
+
+    print(q_custom)
+    print(q_custom.shape)
+    custom_size = q_custom.shape[0]
+
+    max_seq_len = 200
+    pad_len = max_seq_len - q_custom.shape[1]
+
+    device = 'cuda:0'
+
+    q_custom = torch.cat([q_custom, torch.zeros([custom_size, pad_len], dtype=int)], dim=1).to(device)
+    y_custom = torch.cat([y_custom, -1 * torch.ones([custom_size, pad_len], dtype=float)], dim=1).to(device)
+    f_custom = torch.cat([f_custom, torch.zeros([custom_size, pad_len], dtype=int)], dim=1).to(device)
+
+    import matplotlib.pyplot as plt
+    co_relavance_upgrade = torch.zeros([s_num + 1, s_num + 1])
+    co_relavance_downgrade = torch.zeros([s_num + 1, s_num + 1])
+
+    def demo(matrix1, matrix2, matrix3):
+        # Create subplots with 1 row and 3 columns
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+        # Plot the first matrix
+        im1 = axes[0].imshow(matrix1, cmap='viridis',origin='lower')
+        axes[0].set_title('Matrix 1')
+
+        # Plot the second matrix
+        im2 = axes[1].imshow(matrix2, cmap='plasma',origin='lower')
+        axes[1].set_title('Matrix 2')
+
+        # Plot the third matrix
+        im3 = axes[2].imshow(matrix3, cmap='inferno',origin='lower')
+        axes[2].set_title('Matrix 3')
+
+        # Add colorbars
+        fig.colorbar(im1, ax=axes[0])
+        fig.colorbar(im2, ax=axes[1])
+        fig.colorbar(im3, ax=axes[2])
+
+        # Adjust layout for better spacing
+        plt.tight_layout()
+
+        # Show the plot
+        plt.show()
+
+    custom_bs = 10
+    batch_idx = 0
+    pred = None
+    while batch_idx < q_custom.shape[0]:
+        low = batch_idx
+        high = min(batch_idx + custom_bs, q_custom.shape[0])
+        q_in = q_custom[low:high, ]
+        f_in = f_custom[low:high, ]
+        y_in = y_custom[low:high, ]
+
+        pred_batch = model(f_in, q_in, y_in)
+        batch_idx += custom_bs
+        pred = pred_batch if pred is None else torch.cat([pred, pred_batch], dim=0)
+    print(pred.shape)
+
+    for i in range(s_num ** 2):
+        qi = q_custom[4 * i:4 * i + 4, :]
+        fi = f_custom[4 * i:4 * i + 4, :]
+        yi = y_custom[4 * i:4 * i + 4, :]
+
+        si = qi[0, n - 1].cpu().item()
+        sj = qi[0, 2 * n - 1].cpu().item()
+        # print('question seq: ', qi[:, :3 * n])
+        # print('feature seq', fi[:, :3 * n])
+        # print('label seq', yi[:, :3 * n])
+        #
+        # print('next q seq', qi[:, 1:3 * n])
+        # print('pred seq', pred[4 * i:4 * i + 4, :3 * n - 1])
+        co_relavance_upgrade[si, sj] = pred[4 * i + 1, 2 * n - 1] - pred[4 * i + 1, n - 1]
+        co_relavance_downgrade[si, sj] = -(pred[4 * i + 2, 2 * n - 1] - pred[4 * i + 2, n - 1])
+
+        print(
+            f'co_relavance for {[si, sj]}: update {co_relavance_upgrade[si, sj]} downgrade{co_relavance_downgrade[si, sj]}')
+
+    sorted_indices = np.argsort(co_relavance_upgrade.flatten())
+    dim1,dim2 = np.unravel_index(sorted_indices, co_relavance_upgrade.shape)
+
+    for _i in range(len(dim1)):
+        i,j = dim1[_i],dim2[_i]
+        print(f'({i},{j}) : {co_relavance_upgrade[i,j]}')
+    exit(-1)
+    demo(co_relavance_downgrade.numpy(), co_relavance_upgrade.numpy(),
+         co_relavance_upgrade.numpy() - co_relavance_downgrade.numpy())
+
     for dataset_type, data_loader in data_loaders.items():
         print(f'evaluating dataset : {dataset_type}')
 
@@ -284,7 +524,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
             features, questions, skills, labels, seq_len = batch
             if cuda:
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
-            pred = model(questions, features)
+            pred = model(questions, features, labels)
 
             loss_kt, auc, acc = loss_func(pred, labels)
             print(loss_kt)
@@ -312,27 +552,41 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
 
 def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
     for dataset_type, data_loader in data_loaders.items():
-        print(f'evaluating dataset : {dataset_type}')
+        print(f'evaluating SAKT-Skill on dataset : {dataset_type}')
 
         loss_train = []
         auc_train = []
         acc_train = []
 
+        assert data_loader.batch_size == 1
         for batch_idx, batch in enumerate(data_loader):
 
             features, questions, skills, labels, seq_len = batch
             if cuda:
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
-            print(features)
-            print(questions)
-            print(labels)
-            exit(-1)
-            pred = model(features, questions, labels)
 
+            pred = model(features, questions, labels)
+            assert torch.all(pred > 0)
+            pred_copy = pred.clone()
             loss_kt, auc, acc = loss_func(pred, labels)
-            print(loss_kt)
-            print(auc)
-            print(acc)
+
+            def print_result(q, s, y, l, p, loss, auc, acc):
+                print(l)
+
+                q = q.squeeze().cpu().tolist()
+                s = s.squeeze().cpu().tolist()
+                y = y.squeeze().cpu().tolist()
+                l = l.squeeze().cpu().tolist()
+                p = p.squeeze().cpu().tolist()
+                print(f'question seq: {q[:l]}')
+                print(f'skill seq: {s[:l]}')
+                print(f'label seq {y[:l]}')
+
+                print(f'pred seq:{p[:l]}')
+
+                print(f'loss {loss} auc {auc} acc {acc}')
+
+            print_result(questions, skills, labels, seq_len, pred_copy, loss_kt, auc, acc)
 
 
 def evaluate(model: nn.Module, data_loaders, loss_func, cuda=False):

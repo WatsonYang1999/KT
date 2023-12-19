@@ -11,6 +11,8 @@ from KT.train import train, evaluate, rank_data_performance
 from KT.utils import load_model, load_dataset, reformat_datatime, get_model_size
 
 import time
+
+
 # time.sleep(60 * 15)
 
 def set_parser():
@@ -65,9 +67,11 @@ def set_parser():
     parser.add_argument('--output_dim', type=int, default=100, help='')
     parser.add_argument('--dropout', type=float, default=0.2, help='')
     parser.add_argument('--memory_size', type=int, default=20, help='')
+    parser.add_argument('--n_heads', type=int, default=4, help='number of multi-attention heads')
+
     # graph related paramaters
     parser.add_argument('--edge_types', type=int, default=2, help='')
-    parser.add_argument('--graph_type', type=str, default='Dense', help='')
+    parser.add_argument('--graph_type', type=str, default='PAM', help='')
     parser.add_argument('--device', type=str, default='cuda', help='')
 
     parser.add_argument('--s_num', type=int, default=-1, help='')
@@ -172,7 +176,6 @@ if not args.eval:
 
 else:
     logging.info("---------------------------evaluating---------------------------------")
-
     custom_data_loaders = {'custom_dataset': test_loader}
     evaluate(
         model=model,

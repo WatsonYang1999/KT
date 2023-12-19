@@ -7,76 +7,7 @@ from torch.functional import F
 from torch.nn.modules.module import Module
 from torch.nn.parameter import Parameter
 import numpy as np
-
-
-
-class GraphConvolution(Module):
-    """
-    Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
-    """
-
-    def __init__(self, in_features, out_features, bias=True):
-        super(GraphConvolution, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.weight = Parameter(torch.FloatTensor(in_features, out_features))
-        if bias:
-            self.bias = Parameter(torch.FloatTensor(out_features))
-        else:
-            self.register_parameter('bias', None)
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        stdv = 1. / math.sqrt(self.weight.size(1))
-        self.weight.data.uniform_(-stdv, stdv)
-        if self.bias is not None:
-            self.bias.data.uniform_(-stdv, stdv)
-
-    def forward(self, input, adj):
-
-        # support = torch.mm(input, self.weight)
-        support = input @ self.weight
-
-        output = adj @ support
-        if self.bias is not None:
-            return output + self.bias
-        else:
-            return output
-
-    def __repr__(self):
-        return self.__class__.__name__ + ' (' \
-               + str(self.in_features) + ' -> ' \
-               + str(self.out_features) + ')'
-
-
-class GCN_2layer(nn.Module):
-    def __init__(self, nfeat, nhid, nout, dropout):
-        super(GCN_2layer, self).__init__()
-        print(f"nfeat :{nfeat}, nhid:{nhid}, nclass:{nout}")
-        self.gc1 = GraphConvolution(nfeat, nhid)
-        self.gc2 = GraphConvolution(nhid, nout)
-        self.dropout = dropout
-
-    def forward(self, x, adj):
-        x = F.relu(self.gc1(x, adj))
-        x = F.dropout(x, self.dropout, training=self.training)
-
-        x = self.gc2(x, adj)
-        return x
-
-
-class GCN_1layer(nn.Module):
-    def __init__(self, nfeat, nhid, nout, dropout):
-        super(GCN_1layer, self).__init__()
-        print(f"nfeat :{nfeat}, nhid:{nhid}, nclass:{nout}")
-        self.gc1 = GraphConvolution(nfeat, nhid)
-        self.dropout = dropout
-
-    def forward(self, x, adj):
-        x = F.relu(self.gc1(x, adj))
-        x = F.dropout(x, self.dropout, training=self.training)
-        return x
-
+from gcn import GCN
 
 class QGKT(nn.Module):
     def __init__(self, skill_num, question_num, hidden_dim, embedding_dim, qs_matrix, s_graph):
@@ -109,8 +40,7 @@ class QGKT(nn.Module):
         # self.gru = nn.GRUCell(int(embedding_dim) * skill_num, hidden_dim * skill_num)
         self.gru_list = [nn.GRUCell(embedding_dim, hidden_dim) for i in range(0, skill_num)]
 
-        self.graph_conv = GCN_1layer(nfeat=embedding_dim, nhid=embedding_dim, nout=embedding_dim,
-                                     dropout=0.2)
+        self.graph_conv = GCN()
         self.predict_layer = nn.Linear(self.hidden_dim, 1)
         self.simple_predict_v2 = nn.Linear(self.hidden_dim, self.question_num + 1, bias=True)
         self.mlp_layer = nn.Linear(self.skill_num, self.question_num + 1)
@@ -322,13 +252,11 @@ class QGKT(nn.Module):
 if __name__ == '__main__':
     import numpy as np
     import random
-
     q_num = 10000
     s_num = 100
     len_avg = 100
     len_max = 200
     batch_size = 128
-
 
     def seq_gen(seq_len: int):
         seq = []
@@ -336,7 +264,6 @@ if __name__ == '__main__':
         a_seq = np.random.randint(0, 2, size=[seq_len])
 
         return q_seq, a_seq
-
 
     def data_gen():
         seq_len_arr = np.random.normal(len_avg, 5, batch_size).astype(np.int32)
@@ -353,7 +280,6 @@ if __name__ == '__main__':
 
         return torch.LongTensor(np.array(X_fake)), torch.LongTensor(np.array(y_fake))
 
-
     def qs_matrix_gen(q_n, s_n):
         qs_matrix = np.zeros((q_n, s_n))
         sample_list = [i for i in range(0, s_n)]
@@ -368,7 +294,6 @@ if __name__ == '__main__':
 
         return qs_matrix
 
-
     def s_graph_gen(s_n):
         s_graph = np.ones((s_n, s_n))
         s_graph = s_graph / (s_n)
@@ -376,13 +301,14 @@ if __name__ == '__main__':
 
         return s_graph
 
-
     qs_matrix = qs_matrix_gen(q_num, s_num)
     # qs_matrix = np.load('../Dataset/Buaa2019s/qs_matrix.npy').transpose()
     gkt = QGKT(question_num=q_num, skill_num=s_num, hidden_dim=50, embedding_dim=100,
                qs_matrix=qs_matrix, s_graph=s_graph_gen(s_num))
+    from KT.utils import get_model_size
+    from KT.models.Loss import KTLoss
     get_model_size(gkt)
-    exit(-1)
+
     for i in range(0, 1000):
         q, a = data_gen()
         f = torch.where(a == 0, q + q_num, q)

@@ -5,6 +5,8 @@ from torch.autograd import Variable
 from torch import nn
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+from icecream import ic
 class MLP(nn.Module):
 
     def __init__(self, input_dim, hidden_dim, output_dim, dropout=0., bias=True):
@@ -68,6 +70,7 @@ class GKT(nn.Module):
     def __init__(self, concept_num, hidden_dim, embedding_dim, edge_type_num, graph_type, graph=None, graph_model=None,
                  dropout=0.5, bias=True, binary=False, has_cuda=False):
         super(GKT, self).__init__()
+
         self.concept_num = concept_num+1
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
@@ -89,7 +92,7 @@ class GKT(nn.Module):
             self.graph = graph  # None
             if graph_type == 'PAM':
                 assert graph_model is None
-                self.graph = nn.Parameter(torch.rand(concept_num, concept_num))
+                self.graph = nn.Parameter(torch.rand(self.concept_num, self.concept_num))
             else:
                 assert graph_model is not None
             self.graph_model = graph_model
@@ -106,9 +109,9 @@ class GKT(nn.Module):
 
         self.one_hot_q = torch.cat((self.one_hot_q, zero_padding), dim=0)
         # concept and concept & response embeddings
-        self.emb_x = nn.Embedding(self.res_len * concept_num, embedding_dim)
+        self.emb_x = nn.Embedding(self.res_len * self.concept_num, embedding_dim)
         # last embedding is used for padding, so dim + 1
-        self.emb_c = nn.Embedding(concept_num + 1, embedding_dim, padding_idx=-1)
+        self.emb_c = nn.Embedding(self.concept_num, embedding_dim, padding_idx=-1)
 
         # f_self function and f_neighbor functions
         mlp_input_dim = hidden_dim + embedding_dim
@@ -123,7 +126,7 @@ class GKT(nn.Module):
                 self.f_neighbor_list.append(MLP(2 * mlp_input_dim, hidden_dim, hidden_dim, dropout=dropout, bias=bias))
 
         # Erase & Add Gate
-        self.erase_add_gate = EraseAddGate(hidden_dim, concept_num)
+        self.erase_add_gate = EraseAddGate(self.hidden_dim, self.concept_num)
         # Gate Recurrent Unit
         self.gru = nn.GRUCell(hidden_dim, hidden_dim, bias=bias)
         # prediction layer
@@ -148,8 +151,11 @@ class GKT(nn.Module):
 
         qt_mask = torch.ne(qt, -1)  # [batch_size], qt != -1
         x_idx_mat = torch.arange(self.res_len * self.concept_num, device=xt.device)
-        print(x_idx_mat)
+
+        assert torch.max(x_idx_mat) < self.emb_x.weight.shape[0]
         x_embedding = self.emb_x(x_idx_mat)  # [res_len * concept_num, embedding_dim]
+        if torch.max(xt[qt_mask]) > self.one_hot_feat.shape[0]:
+            raise ValueError(f"max element {torch.max(xt[qt_mask])} for emebedding size {self.one_hot_feat.shape[0]}")
         masked_feat = F.embedding(xt[qt_mask], self.one_hot_feat)  # [mask_num, res_len * concept_num]
         res_embedding = masked_feat.mm(x_embedding)  # [mask_num, embedding_dim]
         mask_num = res_embedding.shape[0]

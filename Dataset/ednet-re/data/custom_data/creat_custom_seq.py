@@ -22,8 +22,16 @@ def observe_single_question_improvement(target_q):
 
 
 def create_custom_dataset():
-    q_seq, s_seq, a_seq = observe_single_question_improvement(2)
+    # q_seq, s_seq, a_seq = observe_single_question_improvement(2)
+    q_seq = [
+        [2,2],
+        [2,2]
+    ]
 
+    a_seq = [
+        [1,0],
+        [1,1]
+    ]
     columns = ['QuestionId', 'UserId', 'AnswerId', 'IsCorrect', 'CorrectAnswer', 'AnswerValue']
     df = pd.DataFrame(columns=columns)
 

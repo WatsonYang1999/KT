@@ -10,6 +10,8 @@ import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+use_distance = True
+
 class Dim(IntEnum):
     batch = 0
     seq = 1
@@ -17,7 +19,7 @@ class Dim(IntEnum):
 
 
 class AKT(nn.Module):
-    def __init__(self, n_question, n_pid, d_model, n_blocks,
+    def __init__(self, s_num, q_num, d_model, n_blocks,
                  kq_same, dropout, model_type, final_fc_dim=512, n_heads=8, d_ff=2048,  l2=1e-5, separate_qa=True):
         super().__init__()
         """
@@ -27,10 +29,10 @@ class AKT(nn.Module):
             n_heads: number of heads in multi-headed attention
             d_ff : dimension for fully conntected net inside the basic block
         """
-        self.n_question = n_question
+        self.s_num = s_num
         self.dropout = dropout
         self.kq_same = kq_same
-        self.n_pid = n_pid
+        self.q_num = q_num
         self.l2 = l2
         self.model_type = model_type
         self.separate_qa = separate_qa
@@ -38,20 +40,23 @@ class AKT(nn.Module):
         self.n_heads = n_heads
         self.final_fc_dim = final_fc_dim
         self.d_ff = d_ff
+        self.use_distance = True
+        use_distance = self.use_distance
+        print(f'Consider Distance Factors{self.use_distance}')
         embed_l = d_model
 
-        if self.n_pid > 0:
-            self.difficult_param = nn.Embedding(self.n_pid+1, 1)
-            self.q_embed_diff = nn.Embedding(self.n_question+1, embed_l)
-            self.qa_embed_diff = nn.Embedding(2 * self.n_question + 1, embed_l)
-        # n_question+1 ,d_model
-        self.q_embed = nn.Embedding(self.n_question+1, embed_l)
+        if self.q_num > 0:
+            self.difficult_param = nn.Embedding(self.q_num+1, 1)
+            self.q_embed_diff = nn.Embedding(self.s_num+1, embed_l)
+            self.qa_embed_diff = nn.Embedding(2 * self.s_num + 1, embed_l)
+        # s_num+1 ,d_model
+        self.q_embed = nn.Embedding(self.s_num+1, embed_l)
         if self.separate_qa:
-            self.qa_embed = nn.Embedding(2*self.n_question+1, embed_l)
+            self.qa_embed = nn.Embedding(2*self.s_num+1, embed_l)
         else:
             self.qa_embed = nn.Embedding(2, embed_l)
         # Architecture Object. It contains stack of attention block
-        self.model = Architecture(n_question=n_question, n_blocks=n_blocks, n_heads=n_heads, dropout=dropout,
+        self.model = Architecture(s_num=s_num, n_blocks=n_blocks, n_heads=n_heads, dropout=dropout,
                                     d_model=d_model, d_feature=d_model / n_heads, d_ff=d_ff,  kq_same=self.kq_same, model_type=self.model_type)
 
         self.out = nn.Sequential(
@@ -65,14 +70,16 @@ class AKT(nn.Module):
 
     def reset(self):
         for p in self.parameters():
-            if p.size(0) == self.n_pid+1 and self.n_pid > 0:
+            if p.size(0) == self.q_num+1 and self.q_num > 0:
                 torch.nn.init.constant_(p, 0.)
 
     def forward(self, q_data, qa_data, pid_data=None):
         # Batch First
-        print(q_data.max())
+
         assert q_data.max() < self.q_embed.weight.shape[0]
         assert q_data.min() >= 0
+        assert qa_data.min() >=0
+        assert qa_data.max() < self.qa_embed.weight.shape[0]
         q_embed_data = self.q_embed(q_data)  # BS, seqlen,  d_model# c_ct
 
         assert self.separate_qa
@@ -80,11 +87,11 @@ class AKT(nn.Module):
             # BS, seqlen, d_model #f_(ct,rt)
             qa_embed_data = self.qa_embed(qa_data)
         else:
-            qa_data = (qa_data-q_data)//self.n_question  # rt
+            qa_data = (qa_data-q_data)//self.s_num  # rt
             # BS, seqlen, d_model # c_ct+ g_rt =e_(ct,rt)
             qa_embed_data = self.qa_embed(qa_data)+q_embed_data
 
-        if self.n_pid > 0:
+        if self.q_num > 0:
             q_embed_diff_data = self.q_embed_diff(q_data)  # d_ct
             pid_embed_data = self.difficult_param(pid_data)  # uq
             q_embed_data = q_embed_data + pid_embed_data * \
@@ -111,10 +118,11 @@ class AKT(nn.Module):
         output = torch.sigmoid(output)
         return output.clone()[:,:-1],c_reg_loss
 
+
     def get_hyperparameters(self):
         hyperparameters = {
-            'n_question': self.n_question,
-            'n_pid': self.n_pid,
+            's_num': self.s_num,
+            'q_num': self.q_num,
             'n_blocks': self.n_blocks,
             'kq_same': self.kq_same,
             'dropout': self.dropout,
@@ -129,7 +137,7 @@ class AKT(nn.Module):
 
 
 class Architecture(nn.Module):
-    def __init__(self, n_question,  n_blocks, d_model, d_feature,
+    def __init__(self, s_num,  n_blocks, d_model, d_feature,
                  d_ff, n_heads, dropout, kq_same, model_type):
         super().__init__()
         """
@@ -334,26 +342,27 @@ def attention(q, k, v, d_k, mask, dropout, zero_pad, gamma=None):
 
     x1 = torch.arange(seqlen).expand(seqlen, -1).to(device)
     x2 = x1.transpose(0, 1).contiguous()
+    if use_distance:
+        with torch.no_grad():
+            scores_ = scores.masked_fill(mask == 0, -1e32)
+            scores_ = F.softmax(scores_, dim=-1)  # BS,8,seqlen,seqlen
+            scores_ = scores_ * mask.float().to(device)
+            distcum_scores = torch.cumsum(scores_, dim=-1)  # bs, 8, sl, sl
+            disttotal_scores = torch.sum(
+                scores_, dim=-1, keepdim=True)  # bs, 8, sl, 1
+            position_effect = torch.abs(
+                x1-x2)[None, None, :, :].type(torch.FloatTensor).to(device)  # 1, 1, seqlen, seqlen
+            # bs, 8, sl, sl positive distance
+            dist_scores = torch.clamp(
+                (disttotal_scores-distcum_scores)*position_effect, min=0.)
+            dist_scores = dist_scores.sqrt().detach()
+        m = nn.Softplus()
+        gamma = -1. * m(gamma).unsqueeze(0)  # 1,8,1,1
+        # Now after do exp(gamma*distance) and then clamp to 1e-5 to 1e5
+        total_effect = torch.clamp(torch.clamp(
+            (dist_scores*gamma).exp(), min=1e-5), max=1e5)
 
-    with torch.no_grad():
-        scores_ = scores.masked_fill(mask == 0, -1e32)
-        scores_ = F.softmax(scores_, dim=-1)  # BS,8,seqlen,seqlen
-        scores_ = scores_ * mask.float().to(device)
-        distcum_scores = torch.cumsum(scores_, dim=-1)  # bs, 8, sl, sl
-        disttotal_scores = torch.sum(
-            scores_, dim=-1, keepdim=True)  # bs, 8, sl, 1
-        position_effect = torch.abs(
-            x1-x2)[None, None, :, :].type(torch.FloatTensor).to(device)  # 1, 1, seqlen, seqlen
-        # bs, 8, sl, sl positive distance
-        dist_scores = torch.clamp(
-            (disttotal_scores-distcum_scores)*position_effect, min=0.)
-        dist_scores = dist_scores.sqrt().detach()
-    m = nn.Softplus()
-    gamma = -1. * m(gamma).unsqueeze(0)  # 1,8,1,1
-    # Now after do exp(gamma*distance) and then clamp to 1e-5 to 1e5
-    total_effect = torch.clamp(torch.clamp(
-        (dist_scores*gamma).exp(), min=1e-5), max=1e5)
-    scores = scores * total_effect
+        scores = scores * total_effect
 
     scores.masked_fill_(mask == 0, -1e32)
     scores = F.softmax(scores, dim=-1)  # BS,8,seqlen,seqlen
@@ -397,7 +406,7 @@ class CosinePositionalEmbedding(nn.Module):
 if __name__ == '__main__':
 
     device = 'cuda'
-    model = AKT(n_question=100, n_pid=10000, n_blocks=1, d_model=256,
+    model = AKT(s_num=100, q_num=10000, n_blocks=1, d_model=256,
                     dropout=0.05, kq_same=1, model_type='akt', l2=1e-5).to(device)
 
     print(model)
