@@ -57,6 +57,15 @@ def load_qs_relations():
 
     # print(qs_mapping)
     # print(sq_mapping)
+
+    test_case1 = {25868:[3, 49, 62, 64, 70, 154]}
+    for tc in test_case1:
+        q = tc
+        s_list = test_case1[q]
+        for s in s_list:
+            assert q in sq_mapping[s]
+            assert s in qs_mapping[q]
+    print('load qs relation done and pass')
     return qs_mapping, sq_mapping
 
 
@@ -65,6 +74,7 @@ def load_knowledge_structure():
     print(df.columns)
     # df['SubjectId'] = df['SubjectId'].astype(int)
     # df['ParentId'] = df['ParentId'].astype(int)
+    edge_list = []
     # create graph
     from dataclasses import dataclass
     @dataclass
@@ -84,6 +94,7 @@ def load_knowledge_structure():
         nodes: dict = defaultdict
         root: SkillNode = None
         vis_graph: Network = Network()
+
 
         def build(self, df: pd.DataFrame):
             self.nodes = {}
@@ -159,7 +170,7 @@ def load_knowledge_structure():
                     sid = int(row['SubjectId'])
                     s_name = row['Name']
 
-                    color = f'rgba(255, 0, 0, {skill_freq[sid] / max_frequency/2 + 0.5})'
+                    color = f'rgba(255, 0, 0, {skill_freq[sid] / max_frequency / 2 + 0.5})'
 
                     graph.add_node(sid, label=s_name, color=color)
 
@@ -167,6 +178,7 @@ def load_knowledge_structure():
                     sid = int(row['SubjectId'])
                     if not pd.isna(row['ParentId']):
                         s_parent_id = int(row['ParentId'])
+                        edge_list.append((s_parent_id,sid))
                         graph.add_edge(s_parent_id, sid)
 
             graph = Network(directed=True)
@@ -174,11 +186,16 @@ def load_knowledge_structure():
             # graph.save_graph("tree_visualization.html")
             graph.show("tree_visualization.html")
 
+
+
     skillgraph = SkillTopoGraph()
     skillgraph.build(df)
     # print(skillgraph.level_order_traversal())
     skillgraph.visualize()
 
+    import pickle
+    with open('skill_relation.pkl', 'wb') as file:
+        pickle.dump(edge_list, file)
 
 def frequency_count():
     df = pd.read_csv(r'C:\Users\12574\Documents\GitHub\Ednet-KT\data\train_data\train_task_1_2.csv')
@@ -202,6 +219,6 @@ def frequency_count():
 if __name__ == '__main__':
     # simple_observe(df_train)
     # build_user_sequences(df_train)
-    # load_qs_relations()
+    load_qs_relations()
     load_knowledge_structure()
     # frequency_count()

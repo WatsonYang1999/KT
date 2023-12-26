@@ -8,9 +8,9 @@ class SAKT(nn.Module):
         self.q_num = q_num
         self.seq_len = seq_len
         self.dim = embed_dim
-        self.custom_feature = True
+        self.custom_feature = False
         self.embd_qa = nn.Embedding(2 * q_num + 1, embedding_dim=embed_dim)  # Interaction embedding
-        self.embd_q = nn.Embedding(q_num + 1, embedding_dim=embed_dim)  # Excercise embedding
+        self.embd_q = nn.Embedding(q_num + 1, embedding_dim=embed_dim)  # Question embedding
         self.embd_a = nn.Embedding(2 + 1, embedding_dim=embed_dim)
         self.embd_pos = nn.Embedding(seq_len, embedding_dim=embed_dim)
 
@@ -31,13 +31,14 @@ class SAKT(nn.Module):
         self.layer_norm2 = nn.LayerNorm(embed_dim)  # output with correctnness prediction
         self.drop = nn.Dropout(dropout)
 
-        self.graph = nn.Parameter(torch.eye(2 * self.q_num + 1))
-        self.interaction_onehot = nn.Embedding(2*q_num+1,2*q_num+1)
-        self.interaction_onehot.weight = nn.Parameter(
-            #torch.eye(2*q_num+1),
-            (1/(2 * self.q_num + 1))*torch.ones([2 * self.q_num + 1, 2 * self.q_num + 1]),
-            requires_grad=False)
-        print(self.interaction_onehot.weight)
+
+        self.interaction_onehot = nn.Embedding(2*q_num+1,embedding_dim=2*q_num+1)
+        # self.interaction_onehot.weight = nn.Parameter(
+        #     #torch.eye(2*q_num+1),
+        #     # (1/(2 * self.q_num + 1))*
+        #     torch.ones([2 * self.q_num + 1, 2 * self.q_num + 1]),
+        #     requires_grad=False)
+        # print(self.interaction_onehot.weight)
 
     def forward_original(self, interaction, question, answer):
         interaction = torch.where(interaction < 0, torch.zeros_like(interaction), interaction)
@@ -57,7 +58,7 @@ class SAKT(nn.Module):
 
         out_in = out_in + pos_in
 
-        # split the interaction embeding into v and k ( needs to verify if it is slpited or not)
+        # split the interaction embedding into v and k ( needs to verify if it is slpited or not)
         value_in = out_in
         key_in = out_in  # print('v,k ', value_in.shape)
 
@@ -341,20 +342,27 @@ class SAKT_SKILL(nn.Module):
 
 
 if __name__ == '__main__':
-    def randomdata():
-        input_in = torch.randint(0, 49, (64, 12))
-        return input_in, input_in
 
+
+    device = 'cuda:0'
 
     # Testing the model
-    E = 50  # total unique exercises
+    E = 25000  # total unique exercises
     d = 128  # latent dimension
-    n = 12  # sequence length
+    seqlen = 200  # sequence length
+    bs = 256
+    def randomdata(q_num):
+        input_in = torch.randint(0, q_num, (bs, seqlen))
+        return input_in, input_in
 
-    d1, d2 = randomdata()
+    d1, d2 = randomdata(E)
 
     print('Input shape', d1.shape)
-    model = SAKT(q_num=E, seq_len=n, embed_dim=d, heads=8, dropout=0.2)
+    model = SAKT(q_num=E, seq_len=seqlen, embed_dim=d, heads=8, dropout=0.2)
+    model = model.to(device)
+    from KT.util.kt_util import check_gpu_memory_allocated
+
+    print(check_gpu_memory_allocated())
     out = model(d1, d2)
     print('Output shape', out.shape)
     print(out)

@@ -4,9 +4,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.functional import F
-from torch.nn.modules.module import Module
 from torch.nn.parameter import Parameter
-import numpy as np
 from gcn import GCN
 
 class QGKT(nn.Module):
@@ -305,7 +303,7 @@ if __name__ == '__main__':
     # qs_matrix = np.load('../Dataset/Buaa2019s/qs_matrix.npy').transpose()
     gkt = QGKT(question_num=q_num, skill_num=s_num, hidden_dim=50, embedding_dim=100,
                qs_matrix=qs_matrix, s_graph=s_graph_gen(s_num))
-    from KT.utils import get_model_size
+    from util.kt_util import get_model_size
     from KT.models.Loss import KTLoss
     get_model_size(gkt)
 

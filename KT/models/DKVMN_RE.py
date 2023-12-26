@@ -2,7 +2,6 @@ import random
 
 import torch
 from torch import nn
-import numpy as np
 
 
 class DKVMNHeadGroup(nn.Module):
@@ -238,7 +237,6 @@ class DKVMN_RE(nn.Module):
 
 
         qid_embed_one_hot = torch.eye(self.n_question + 1, device=device)
-        from KT.utils import check_gpu_memory_allocated
         # print('Init Done')
         # check_gpu_memory_allocated()
         for i in range(seqlen):

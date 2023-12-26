@@ -73,7 +73,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
     elif model._get_name() == 'AKT':
         s_num = model.s_num
         correct = (labels == 1)
-        features =torch.IntTensor(skills.cpu().numpy() + correct.cpu().numpy() * s_num).to(skills.device)
+        features = torch.IntTensor(skills.cpu().numpy() + correct.cpu().numpy() * s_num).to(skills.device)
 
         pred, c_loss = model(
             skills,
@@ -414,7 +414,6 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
         for sj in range(1, s_num + 1):
             for ai in range(0, 2):
                 for aj in range(0, 2):
-
                     fi = s_num * ai + si
                     fj = s_num * aj + sj
                     q_custom.append([si] * n + [sj] * n + [si] * n)
@@ -447,15 +446,15 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 
         # Plot the first matrix
-        im1 = axes[0].imshow(matrix1, cmap='viridis',origin='lower')
+        im1 = axes[0].imshow(matrix1, cmap='viridis', origin='lower')
         axes[0].set_title('Matrix 1')
 
         # Plot the second matrix
-        im2 = axes[1].imshow(matrix2, cmap='plasma',origin='lower')
+        im2 = axes[1].imshow(matrix2, cmap='plasma', origin='lower')
         axes[1].set_title('Matrix 2')
 
         # Plot the third matrix
-        im3 = axes[2].imshow(matrix3, cmap='inferno',origin='lower')
+        im3 = axes[2].imshow(matrix3, cmap='inferno', origin='lower')
         axes[2].set_title('Matrix 3')
 
         # Add colorbars
@@ -504,11 +503,11 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
             f'co_relavance for {[si, sj]}: update {co_relavance_upgrade[si, sj]} downgrade{co_relavance_downgrade[si, sj]}')
 
     sorted_indices = np.argsort(co_relavance_upgrade.flatten())
-    dim1,dim2 = np.unravel_index(sorted_indices, co_relavance_upgrade.shape)
+    dim1, dim2 = np.unravel_index(sorted_indices, co_relavance_upgrade.shape)
 
     for _i in range(len(dim1)):
-        i,j = dim1[_i],dim2[_i]
-        print(f'({i},{j}) : {co_relavance_upgrade[i,j]}')
+        i, j = dim1[_i], dim2[_i]
+        print(f'({i},{j}) : {co_relavance_upgrade[i, j]}')
     exit(-1)
     demo(co_relavance_downgrade.numpy(), co_relavance_upgrade.numpy(),
          co_relavance_upgrade.numpy() - co_relavance_downgrade.numpy())

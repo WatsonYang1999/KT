@@ -7,8 +7,10 @@ import numpy
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, random_split
-
 from KT.KTDataloader import KTDataset, KTDataset_SA
+from KT.util.decorators import timing_decorator, suit_directory_decorator
+
+import os
 
 
 def pad(target, value, max_len):
@@ -185,6 +187,8 @@ def load_assist09_s(args):
     return train_set, test_set, qs_matrix
 
 
+@suit_directory_decorator()
+@timing_decorator
 def load_ednet_re(args):
     data_path = 'Dataset/ednet-re/data'
 
@@ -328,11 +332,10 @@ def load_ednet_re(args):
             test_y, test_s, test_q, test_real_len = custom_data['y'], custom_data['s'], custom_data['q'], custom_data[
                 'seq_len']
 
-
     train_set = KTDataset(args.q_num, args.s_num, train_q, train_s, train_y, train_real_len, args.max_seq_len,
                           remapping=True,
                           qs_mapping=qs_mapping,
-                          sq_mapping = sq_mapping,
+                          sq_mapping=sq_mapping,
                           )
 
     test_set = KTDataset(args.q_num, args.s_num, test_q, test_s, test_y, test_real_len, args.max_seq_len,
@@ -376,7 +379,7 @@ def load_assist17_s(args):
     args.s_num = 102
     args.q_num = 3162
 
-    data_path = os.path.join("Dataset", "assist2017_pid", "assist2017_pid.csv")
+    data_path = os.path.join("Dataset", "../../Dataset/assist2017_pid", "assist2017_pid.csv")
     from KT.dataset_loader.assist_17 import PID_DATA
     dat = PID_DATA(n_question=n_question,
                    seqlen=args.max_seq_len, separate_char=',')
@@ -708,7 +711,7 @@ def load_model(args):
             model.load_pretrain_embedding(args.pretrain_embed_file)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    elif args.model =='DKT_PLUS':
+    elif args.model == 'DKT_PLUS':
         from KT.models.DKT import DKT_PLUS
         model = DKT_PLUS(
             q_num=args.q_num + 1,

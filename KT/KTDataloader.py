@@ -5,16 +5,32 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data import random_split
 import torch.nn.functional as F
 import numpy as np
+from KT.util.decorators import timing_decorator
 
 random_seed = 42
 
+def convert_to_tensor(arr):
+    """
+    Convert NumPy array to PyTorch tensor with the original datatype.
 
-def build_dense_graph(node_num):
-    print(node_num)
-    graph = 1. / (node_num - 1) * np.ones((node_num, node_num))
-    np.fill_diagonal(graph, 0)
-    graph = torch.from_numpy(graph).float()
-    return graph
+    Parameters:
+    - arr: NumPy array
+
+    Returns:
+    - torch.Tensor: PyTorch tensor with the same datatype as the original array
+    """
+    if isinstance(arr, np.ndarray):
+        # Get the original datatype of the NumPy array
+        dtype = arr.dtype
+
+        # Convert the NumPy array to a PyTorch tensor with the original datatype
+        torch_tensor = torch.from_numpy(arr)
+
+        return torch_tensor
+    elif isinstance(arr,torch.Tensor):
+        return arr
+    else:
+        raise ValueError("Input is not a NumPy array")
 
 
 class KTDataset(Dataset):
@@ -22,15 +38,16 @@ class KTDataset(Dataset):
                  remapping=False, item_start_from_one=True):
 
         super(KTDataset, self).__init__()
+
         self.q_num = q_num
         self.s_num = s_num
-        self.questions = questions
+        self.questions = convert_to_tensor(questions)
         self.skills = skills
 
-        if skills is None:
-            self.skills = self.questions
-        self.answers = answers
-        self.seq_len = seq_len
+        # if skills is None:
+        #     self.skills = self.questions
+        self.answers = convert_to_tensor(answers)
+        self.seq_len = convert_to_tensor(seq_len)
         self.max_seq_len = max_seq_len
         # need some calculation
 
@@ -38,7 +55,10 @@ class KTDataset(Dataset):
         self.sq_mapping = sq_mapping
         self.q_trans_graph = None
         self.s_trans_graph = None
+        print(self.qs_mapping)
+        print(self.sq_mapping)
         if remapping:
+            print('remapping the qid and sid to [1,q_num] and [1,s_num]')
             '''
                 remapping the qid and sid to [1,q_num] and [1,s_num]
                 while doing this, the qs mapping also have to be updated
@@ -49,35 +69,37 @@ class KTDataset(Dataset):
                 self.qid_remapping[list(self.qs_mapping.keys())[i - 1]] = i
             for i in range(1, len(self.sq_mapping) + 1):
                 self.sid_remapping[list(self.sq_mapping.keys())[i - 1]] = i
+            print(self.sid_remapping)
             # assert 16229 in self.sq_mapping.keys()
-
+            import pickle
+            with open('ednet-remapping.pkl', 'wb') as f:
+                pickle.dump((self.sid_remapping, self.qid_remapping), f)
             self.sid_remapping_reverse = {value: key for key, value in self.sid_remapping.items()}
             self.qid_remapping_reverse = {value: key for key, value in self.qid_remapping.items()}
 
             qid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.qid_remapping[x])
-            sid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.sid_remapping[x])
 
             self.questions = qid_vectorized_mapping(self.questions)
             if self.skills is not None:
+                sid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.sid_remapping[x])
                 self.skills = sid_vectorized_mapping(self.skills)
 
             # re-calculate qs-matrix base on remapped index
             self.qs_matrix = np.ndarray([self.q_num + 1, self.s_num + 1], dtype=int)
-            for q,s_list in qs_mapping.items():
+            for q, s_list in qs_mapping.items():
                 qid_remapped = self.qid_remapping[q]
                 s_list = [self.sid_remapping[s] for s in s_list]
                 for sid_remapped in s_list:
-                    self.qs_matrix[qid_remapped,sid_remapped] = 1
+                    self.qs_matrix[qid_remapped, sid_remapped] = 1
 
         answers_one = (answers == 1.0)
-
+        self.qs_matrix = torch.from_numpy(self.qs_matrix)
         assert questions.shape == answers.shape
         self.features = answers_one * self.q_num + self.questions
-
-        assert np.max(self.answers) <=1
-        assert np.min(self.answers) >=-1
+        print(self.answers)
+        assert torch.max(self.answers) <= 1
+        assert torch.min(self.answers) >= -1
         # this loading process is way fucking too slow that can be optimized greatly
-
 
     def init_by_raw_sequences(self, q_seq, a_seq, qs_mapping):
         pass
@@ -196,14 +218,55 @@ class KTDataset(Dataset):
         print(self.skills.shape)
         print(self.seq_len.shape)
 
-    def gen_skill_trans_graph(self):
-        pass
+    @timing_decorator
+    def get_skill_trans_graph(self):
+        '''
+            Is it a valid approach to obtain trans-graph on both train and test set?
+        '''
+        if self.s_trans_graph is not None:
+            return self.s_trans_graph
 
-    def set_question_trans_graph(self,trans_matrix:torch.FloatTensor):
+        self.s_trans_graph = torch.zeros([self.s_num, self.s_num]).to('cpu')
+        data_num, seq_len = self.questions.shape
+        q2s = [None for i in range(self.qs_matrix.shape[0])]
+        for i in range(data_num):
+            for j in range(seq_len - 1):
+                print(i, j)
+                qi = self.questions[i, j]
+                qj = self.questions[i][j + 1]
+                if qi == 0 or qj == 0:
+                    continue
+
+                def look_up_or_cache(qx):
+                    if q2s[qx] is None:
+                        q2s[qx] = torch.nonzero(self.qs_matrix[qx,] > 0)
+                    return q2s[qx]
+
+                related_skills_qi = look_up_or_cache(qi)
+                related_skills_qj = look_up_or_cache(qj)
+
+                for _si in related_skills_qi:
+                    for _sj in related_skills_qj:
+                        si = _si.item()
+                        sj = _sj.item()
+                        # si_original = self.sid_remapping_reverse[si]
+                        # qi_original = self.qid_remapping_reverse[qi]
+
+                        # assert si_original in self.qs_mapping[qi_original]
+                        self.s_trans_graph[si - 1, sj - 1] += 1
+
+        row_sums = self.s_trans_graph.sum(dim=1, keepdim=False)
+        print(self.s_trans_graph.shape)
+        self.s_trans_graph = self.s_trans_graph / row_sums.unsqueeze(-1)
+        np.save('s_trans_matrix_' + str(data_num) + '.npy', self.s_trans_graph.numpy())
+        return self.s_trans_graph
+
+    def set_question_trans_graph(self, trans_matrix: torch.FloatTensor):
         assert trans_matrix.shape[0] == trans_matrix.shape[1]
         assert trans_matrix.shape[0] == self.q_num
         self.q_trans_graph = trans_matrix
 
+    @timing_decorator
     def get_question_trans_graph(self):
         '''
             Is it a valid approach to obtain trans-graph on both train and test set?
@@ -211,19 +274,20 @@ class KTDataset(Dataset):
         if self.q_trans_graph is not None:
             return self.q_trans_graph
 
-        self.q_trans_graph = torch.zeros([self.q_num,self.q_num])
-        data_num,seq_len = self.questions.shape
+        self.q_trans_graph = torch.zeros([self.q_num, self.q_num]).to('cpu')
+        data_num, seq_len = self.questions.shape
 
         for i in range(data_num):
-            for j in range(seq_len-1):
-                qi = self.questions[i, j].int()
-                qj = self.questions[i][j + 1].int()
+            for j in range(seq_len - 1):
+                qi = self.questions[i, j]
+                qj = self.questions[i][j + 1]
                 if qi == 0 or qj == 0:
                     continue
 
                 self.q_trans_graph[qi - 1, qj - 1] += 1
 
-        row_sums = self.q_trans_graph.sum(dim = 1,keepdim=True)
+        row_sums = self.q_trans_graph.sum(dim=1, keepdim=False)
+        print(self.q_trans_graph.shape)
         self.q_trans_graph = self.q_trans_graph / row_sums.unsqueeze(-1)
 
         return self.q_trans_graph
@@ -234,7 +298,6 @@ class KTDataset_SA(KTDataset):
         answers_one = (answers == 1.0)
         self.features = answers_one * self.s_num + self.skills
 
-
 def pad_collate(batch):
     (features, questions, answers) = zip(*batch)
     features = [torch.LongTensor(feat) for feat in features]
@@ -244,7 +307,6 @@ def pad_collate(batch):
     question_pad = pad_sequence(questions, batch_first=True, padding_value=-1)
     answer_pad = pad_sequence(answers, batch_first=True, padding_value=-1)
     return feature_pad, question_pad, answer_pad
-
 
 def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50, data_shuffle=True):
     seq_len_list = []
@@ -360,40 +422,134 @@ def preprocess():
                 pass
         print("Ascending Sequence Count:", ascending_count)
 
-
-def test_get_question_trans_graph():
-    questions = torch.FloatTensor([
-        [1, 2, 3],
-        [1, 2, 1],
-        [2, 3, 1]
-    ])
+def wtf_get_question_trans_graph():
+    # questions = torch.FloatTensor([
+    #     [1, 2, 3],
+    #     [1, 2, 1],
+    #     [2, 3, 1]
+    # ])
+    q_num = 30000
+    bs = 1000
+    seqlen = 1000
+    questions = torch.randint(0, q_num, [bs, seqlen])
     target = torch.FloatTensor([
         [1, 2, 3],
         [1, 3, 1],
         [2, 3, 1]
     ])
-    q_num = 3
     q_trans_graph = torch.zeros([q_num, q_num])
+
     data_num, seq_len = questions.shape
 
     for i in range(data_num):
         for j in range(seq_len - 1):
             qi = questions[i, j].int()
-            qj = questions[i][j+1].int()
+            qj = questions[i][j + 1].int()
             if qi == 0 or qj == 0:
                 continue
 
-
-            q_trans_graph[qi-1, qj-1] += 1
-
+            q_trans_graph[qi - 1, qj - 1] += 1
+    print(torch.sum(q_trans_graph))
     row_sums = q_trans_graph.sum(dim=1)
+    row_sums[row_sums == 0] = 1e-5
+    print(questions)
     print(q_trans_graph)
     print(row_sums)
-    print(row_sums.unsqueeze(-1))
+    print(row_sums.unsqueeze(-1).shape)
     q_trans_graph = q_trans_graph / row_sums.unsqueeze(-1)
 
     print(q_trans_graph)
 
-    assert q_trans_graph == target
+    from KT.util.visual import plot_heatmap
+    plot_heatmap(q_trans_graph)
+    #
+    # assert q_trans_graph == target
+
+def verify_dummy_dataset():
+
+    q_num = 100
+    s_num = 10
+
+    markov_transition_q = torch.rand([q_num,q_num])
+    def random_split_stick(total_length, n):
+        # 生成 n-1 个随机数作为分割点
+        split_points = np.sort(np.random.uniform(0, total_length, n - 1))
+
+        # 计算每一份的长度
+        lengths = np.zeros(n)
+        lengths[0] = split_points[0]
+        lengths[-1] = total_length - split_points[-1]
+        for i in range(1, n - 1):
+            lengths[i] = split_points[i] - split_points[i - 1]
+
+        return lengths
+    for _ in range(q_num):
+        prob_i = random_split_stick(1,q_num)
+        prob_i = prob_i/np.sum(prob_i)
+        markov_transition_q[_,:] = torch.tensor(prob_i)
+
+    @timing_decorator
+    def generate_sequence(transition_matrix, initial_state, sequence_length):
+        current_state = initial_state
+        sequence = [current_state]
+
+        for _ in range(sequence_length - 1):
+            # 根据概率转移矩阵选择下一个状态
+
+            # print(f'transition for state {_}',transition_matrix[current_state])
+            wtf = transition_matrix[current_state]
+            wtf = wtf.numpy()
+            wtf = wtf/np.sum(wtf)
+            next_state = np.random.choice(len(transition_matrix), p=wtf)
+            sequence.append(next_state)
+            current_state = next_state
+
+        return sequence
+    data_num = 200
+    max_seq_len = 200
+    markov_seq = generate_sequence(markov_transition_q, initial_state=1,sequence_length=2*data_num*max_seq_len)
+
+
+    print(markov_seq)
+
+    questions = torch.ones([data_num, max_seq_len]) * -1
+    for i in range(data_num):
+        for j in range(max_seq_len):
+            k = i * max_seq_len + j
+            questions[i,j] = markov_seq[k]
+    questions = questions.int()
+    print(questions)
+    skills = questions
+    qs_mapping = {_ : set() for _ in range(q_num)}
+    sq_mapping = {_ :set() for _ in range(s_num)}
+
+    # for i in range(0,s_num):
+    #     for j in range(0,q_num):
+    #
+    #         qs_mapping[j].add(i)
+    #         sq_mapping[i].add(j)
+    for j in range(0, q_num):
+        qs_mapping[j].add(j%10)
+        sq_mapping[j%10].add(j)
+
+    answers = torch.ones_like(questions).int()
+    seq_len = torch.IntTensor([max_seq_len, max_seq_len])
+    print(qs_mapping)
+    print(sq_mapping)
+    dummyset = KTDataset(q_num, s_num, questions, None, answers, seq_len, max_seq_len, qs_mapping=qs_mapping,
+                         sq_mapping=sq_mapping,
+                         remapping=True, item_start_from_one=True)
+
+    q_trans = dummyset.get_question_trans_graph()
+    s_trans = dummyset.get_skill_trans_graph()
+    print(markov_transition_q)
+    print(q_trans)
+    print(s_trans)
+
+    from KT.util.visual import plot_multiple_heatmap
+    plot_multiple_heatmap([markov_transition_q[:10, :10], q_trans[:10, :10], s_trans])
+
+
 if __name__ == '__main__':
-    test_get_question_trans_graph()
+    verify_dummy_dataset()
+    # wtf_get_question_trans_graph()
