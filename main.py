@@ -7,8 +7,8 @@ import torch
 from KT.models.Loss import KTLoss
 from KT.models.Pretrain import embedding_pretrain
 from KT.train import train, evaluate
-from util.args import set_parser
-from util.kt_util import load_model, load_dataset, reformat_datatime, get_model_size
+from KT.util.args import set_parser
+from KT.util.kt_util import load_model, load_dataset, reformat_datatime, get_model_size
 
 parser = set_parser()
 args = parser.parse_args()
@@ -27,9 +27,8 @@ train_loader = data_loaders['train_loader']
 test_loader = data_loaders['test_loader']
 args.qs_matrix = data_loaders['qs_matrix']
 
+args.metrics = ['train_auc', 'train_loss', 'train_acc', 'train_rmse','val_auc', 'val_loss', 'val_acc','val_rmse']
 # print(train_loader.dataset.get_question_trans_graph())
-
-
 
 if args.pretrain == 'scratch':
     embedding_pretrain(args, train_loader.dataset, test_loader.dataset, args.qs_matrix)
@@ -79,7 +78,7 @@ if not args.eval:
     def log_train():
         best_epoch = -1
         best_val_auc = -1
-        metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
+        metrics = args.metrics
         metric_select = 'val_auc'
         greater_is_better = 1
         for idx, metric_i in enumerate(logs[metric_select]):

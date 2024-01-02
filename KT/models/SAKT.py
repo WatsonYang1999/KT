@@ -32,7 +32,7 @@ class SAKT(nn.Module):
         self.drop = nn.Dropout(dropout)
 
 
-        self.interaction_onehot = nn.Embedding(2*q_num+1,embedding_dim=2*q_num+1)
+        # self.interaction_onehot = nn.Embedding(2*q_num+1,embedding_dim=2*q_num+1)
         # self.interaction_onehot.weight = nn.Parameter(
         #     #torch.eye(2*q_num+1),
         #     # (1/(2 * self.q_num + 1))*

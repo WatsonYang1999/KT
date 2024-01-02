@@ -22,6 +22,80 @@ def pad(target, value, max_len):
             target[idx] = pad_seq + [value for i in range(pad_len)]
 
 
+def cut_seq(seqs, max_len, qs_mapping,sq_mapping,min_seq_len=5,skill_select_strategy='first_select',dataset_scale = 'full'):
+    '''
+    :param seqs:seqs[uid] = {"question": q_seq, "result": r_seq, "ca": ca_seq, "sa": sa_seq}
+    '''
+    q_seq_list = []
+    y_seq_list = []
+    s_seq_list = []
+    seq_len_list = []
+    q_padding = -1
+    y_padding = -1
+    s_padding = -1
+
+    def pad(seq, max_len, pad_value):
+        if len(seq) < max_len:
+            return seq + [pad_value for _ in range(0, max_len - len(seq))]
+        return seq[:max_len]
+
+    from tqdm import tqdm
+    i = 0
+    mini_size = 3000
+
+    break_into_multi_seqs = False
+
+    for uid, seqs in tqdm(seqs.items(), desc="Processing", unit="iteration", ncols=80):
+
+        q_seq = seqs['question']
+        a_seq = seqs['result']
+        seq_len = len(q_seq)
+
+        if seq_len < min_seq_len:
+            continue
+
+        def select_skill(question):
+            if skill_select_strategy == 'first_select':
+                return list(qs_mapping[question])[0]
+
+        if skill_select_strategy == 'total_random':
+
+            random_skill_list = random.choices(list(sq_mapping.keys()), k=len(q_seq))
+            s_seq = random_skill_list
+
+        else:
+            s_seq = [select_skill(q) for q in q_seq]
+
+        if break_into_multi_seqs:
+            while seq_len > max_len:
+                q_seq_list.append(q_seq[:max_len])
+                q_seq = q_seq[max_len:]
+                y_seq_list.append(a_seq[:max_len])
+                a_seq = a_seq[max_len:]
+                s_seq_list.append(s_seq[:max_len])
+                s_seq = s_seq[max_len:]
+                seq_len_list.append(max_len)
+                seq_len -= max_len
+
+            q_seq_list.append(pad(q_seq, max_len, q_padding))
+            y_seq_list.append(pad(a_seq, max_len, y_padding))
+            s_seq_list.append(pad(s_seq, max_len, s_padding))
+            seq_len_list.append(seq_len)
+            i += 1
+        else:
+            q_seq_list.append(pad(q_seq, max_len, q_padding))
+            y_seq_list.append(pad(a_seq, max_len, y_padding))
+            s_seq_list.append(pad(s_seq, max_len, s_padding))
+            seq_len_list.append(seq_len)
+            i += 1
+        if dataset_scale == 'mini':
+            if i > mini_size:
+                break
+    return np.array(q_seq_list, dtype=int), np.array(s_seq_list, dtype=int), np.array(y_seq_list,
+                                                                                      dtype=float), np.array(
+        seq_len_list, dtype=int)
+
+
 def count_model_parameters(model: torch.nn.Module):
     param_count = 0
     for param in model.parameters():
@@ -199,59 +273,6 @@ def load_ednet_re(args):
     # dataset_scale = 'mini'
     dataset_scale = 'full'
 
-    def cut_seq(seqs, max_len, min_seq_len=5):
-        '''
-        :param seqs:seqs[uid] = {"question": q_seq, "result": r_seq, "ca": ca_seq, "sa": sa_seq}
-        '''
-        q_seq_list = []
-        y_seq_list = []
-        s_seq_list = []
-        seq_len_list = []
-        q_padding = -1
-        y_padding = -1
-        s_padding = -1
-
-        def pad(seq, max_len, pad_value):
-            if len(seq) < max_len:
-                return seq + [pad_value for _ in range(0, max_len - len(seq))]
-            return seq[:max_len]
-
-        from tqdm import tqdm
-        i = 0
-        mini_size = 3000
-        for uid, seqs in tqdm(seqs.items(), desc="Processing", unit="iteration", ncols=80):
-
-            q_seq = seqs['question']
-            a_seq = seqs['result']
-            seq_len = min(len(q_seq), max_len)
-            break_into_multi_seqs = False
-            if seq_len < min_seq_len:
-                break
-
-            def select_skill(question):
-                if skill_select_strategy == 'first_select':
-                    return list(qs_mapping[question])[0]
-
-            if skill_select_strategy == 'total_random':
-
-                random_skill_list = random.choices(list(sq_mapping.keys()), k=len(q_seq))
-                s_seq = random_skill_list
-
-            else:
-                s_seq = [select_skill(q) for q in q_seq]
-
-            q_seq_list.append(pad(q_seq, max_len, q_padding))
-            y_seq_list.append(pad(a_seq, max_len, y_padding))
-            s_seq_list.append(pad(s_seq, max_len, s_padding))
-            seq_len_list.append(seq_len)
-            i += 1
-            if dataset_scale == 'mini':
-                if i > mini_size:
-                    break
-        return np.array(q_seq_list, dtype=int), np.array(s_seq_list, dtype=int), np.array(y_seq_list,
-                                                                                          dtype=float), np.array(
-            seq_len_list, dtype=int)
-
     load_custom = args.custom_data
     custom_dataset = os.path.join(data_path, 'custom_data', 'custom_data_1.npz')
     preprocessed_dataset = 'ednet-re-' + dataset_scale + '_' + skill_select_strategy + '.npz'
@@ -262,7 +283,7 @@ def load_ednet_re(args):
     if load_custom:
         custom_seqs = build_user_sequences(custom_task1_path)
 
-        custom_q, custom_s, custom_y, custom_real_len = cut_seq(custom_seqs, args.max_seq_len, min_seq_len=0)
+        custom_q, custom_s, custom_y, custom_real_len = cut_seq(custom_seqs, args.max_seq_len, min_seq_len=0,skill_select_strategy=skill_select_strategy,dataset_scale=dataset_scale)
 
         np.savez(
             custom_dataset,
@@ -275,8 +296,8 @@ def load_ednet_re(args):
             qs_mapping=qs_mapping,
             sq_mapping=sq_mapping
         )
-
-    if not os.path.exists(os.path.join(data_path, preprocessed_dataset)):
+    always_load_from_preprocess = True
+    if not os.path.exists(os.path.join(data_path, preprocessed_dataset)) or always_load_from_preprocess:
 
         train_task1_path = 'Dataset/ednet-re/data/train_data/train_task_1_2.csv'
         test_task1_public_path = 'Dataset/ednet-re/data/test_data/test_public_answers_task_1_2.csv'
@@ -299,21 +320,22 @@ def load_ednet_re(args):
         # s_merged = np.vstack((train_s, test_s))
         # y_merged = np.vstack((train_y, test_y))
         # real_len_merged = np.hstack((train_real_len, test_real_len))
-        q_merged, s_merged, y_merged, real_len_merged = cut_seq(total_seqs, args.max_seq_len)
+        q_merged, s_merged, y_merged, real_len_merged = cut_seq(total_seqs, args.max_seq_len,qs_mapping,sq_mapping)
         train_data, test_data = train_test_split([y_merged, s_merged, q_merged, real_len_merged], random_split=False)
         train_y, train_s, train_q, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
         test_y, test_s, test_q, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
-        np.savez(
-            os.path.join(data_path, preprocessed_dataset),
-            q_num=len(qs_mapping),
-            s_num=len(sq_mapping),
-            q=q_merged,
-            s=s_merged,
-            y=y_merged,
-            seq_len=real_len_merged,
-            qs_mapping=qs_mapping,
-            sq_mapping=sq_mapping
-        )
+        if not always_load_from_preprocess:
+            np.savez(
+                os.path.join(data_path, preprocessed_dataset),
+                q_num=len(qs_mapping),
+                s_num=len(sq_mapping),
+                q=q_merged,
+                s=s_merged,
+                y=y_merged,
+                seq_len=real_len_merged,
+                qs_mapping=qs_mapping,
+                sq_mapping=sq_mapping
+            )
 
     else:
         data = np.load(os.path.join(data_path, preprocessed_dataset), allow_pickle=True)
@@ -349,25 +371,130 @@ def load_ednet_re(args):
     return train_set, test_set, qs_matrix
 
 
+@suit_directory_decorator()
+@timing_decorator
 def load_assist09_q(args):
-    data_dir = 'Dataset/' + args.dataset
-    data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
-    y, skill, problem, real_len = data['y'], data['skill'], data['problem'], data['real_len']
+    data_path = 'Dataset/assist2009'
 
-    args.s_num, args.q_num = data['skill_num'], data['problem_num']
+    skill_select_strategy = 'first_select'
+    # skill_select_strategy = 'total_random'
+    # skill_select_strategy = 'related_random'
+    # skill_select_strategy = 'most_frequent'
+    # dataset_scale = 'mini'
+    dataset_scale = 'full'
 
-    train_data, test_data = train_test_split([y, skill, problem, real_len])  # [y, skill, pro, real_len]
-    train_y, train_skill, train_problem, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
-    test_y, test_skill, test_problem, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
-    args.q_num = max(np.max(train_problem), np.max(test_problem))
 
-    train_set = KTDataset(args.q_num, args.s_num, train_problem, train_skill, train_y, train_real_len,
-                          max_seq_len=args.max_seq_len, remapping=False)
-    test_set = KTDataset(args.q_num, args.s_num, test_problem, test_skill, test_y, test_real_len,
-                         max_seq_len=args.max_seq_len, remapping=False)
-    # todo : load qs_matrix
-    qs_matrix = None
+    load_custom = args.custom_data
+    custom_dataset = os.path.join(data_path, 'custom_data', 'custom_data_1.npz')
+    preprocessed_dataset = 'assist09-re-' + dataset_scale + '_' + skill_select_strategy + '.npz'
+
+    from Dataset.assist2009.preprocess import build_user_sequences, load_qs_relation
+    qs_mapping, sq_mapping = load_qs_relation()
+    if load_custom:
+        custom_seqs = build_user_sequences()
+
+        custom_q, custom_s, custom_y, custom_real_len = cut_seq(custom_seqs, args.max_seq_len,qs_mapping,sq_mapping ,min_seq_len=0,skill_select_strategy=skill_select_strategy,dataset_scale=dataset_scale)
+
+        np.savez(
+            custom_dataset,
+            q_num=len(qs_mapping),
+            s_num=len(sq_mapping),
+            q=custom_q,
+            s=custom_s,
+            y=custom_y,
+            seq_len=custom_real_len,
+            qs_mapping=qs_mapping,
+            sq_mapping=sq_mapping
+        )
+    always_load_from_preprocess = True
+    if not os.path.exists(os.path.join(data_path, preprocessed_dataset)) or always_load_from_preprocess:
+
+        total_seqs = build_user_sequences()
+
+        args.q_num = len(qs_mapping)
+        args.s_num = len(sq_mapping)
+        # train_q, train_s, train_y, train_real_len = cut_seq(train_seqs, args.max_seq_len)
+        # assert train_q.shape == train_y.shape
+        #
+        # test_q, test_s, test_y, test_real_len = cut_seq(test_public_seqs, args.max_seq_len)
+        #
+        # assert test_q.shape == test_y.shape
+        # q_merged = np.vstack((train_q, test_q))
+        # s_merged = np.vstack((train_s, test_s))
+        # y_merged = np.vstack((train_y, test_y))
+        # real_len_merged = np.hstack((train_real_len, test_real_len))
+
+        q_merged, s_merged, y_merged, real_len_merged = cut_seq(total_seqs, args.max_seq_len,qs_mapping,sq_mapping ,min_seq_len=0,skill_select_strategy=skill_select_strategy,dataset_scale=dataset_scale)
+
+        train_data, test_data = train_test_split([y_merged, s_merged, q_merged, real_len_merged], random_split=False)
+        train_y, train_s, train_q, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
+        test_y, test_s, test_q, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
+        if not always_load_from_preprocess:
+            np.savez(
+                os.path.join(data_path, preprocessed_dataset),
+                q_num=len(qs_mapping),
+                s_num=len(sq_mapping),
+                q=q_merged,
+                s=s_merged,
+                y=y_merged,
+                seq_len=real_len_merged,
+                qs_mapping=qs_mapping,
+                sq_mapping=sq_mapping
+            )
+
+    else:
+        data = np.load(os.path.join(data_path, preprocessed_dataset), allow_pickle=True)
+        y, skill, problem, real_len = data['y'], data['s'], data['q'], data['seq_len']
+
+        args.s_num, args.q_num = int(data['s_num']), int(data['q_num'])
+
+        train_data, test_data = train_test_split([y, skill, problem, real_len], random_split=False)
+        train_y, train_s, train_q, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
+        test_y, test_s, test_q, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
+        # very ugly idea
+        qs_mapping = eval(data['qs_mapping'].__str__())
+        sq_mapping = eval(data['sq_mapping'].__str__())
+        if load_custom:
+            custom_data = np.load(os.path.join(data_path, custom_dataset), allow_pickle=True)
+            test_y, test_s, test_q, test_real_len = custom_data['y'], custom_data['s'], custom_data['q'], custom_data[
+                'seq_len']
+
+    train_set = KTDataset(args.q_num, args.s_num, train_q, train_s, train_y, train_real_len, args.max_seq_len,
+                          remapping=True,
+                          qs_mapping=qs_mapping,
+                          sq_mapping=sq_mapping,
+                          )
+
+    test_set = KTDataset(args.q_num, args.s_num, test_q, test_s, test_y, test_real_len, args.max_seq_len,
+                         remapping=True,
+                         qs_mapping=qs_mapping,
+                         sq_mapping=sq_mapping,
+                         )
+    print(f'Done Loading Assist09-Question-Level , train_size: {len(train_set)} test_size: {len(test_set)}')
+    qs_matrix = train_set.get_qs_matrix()
+
     return train_set, test_set, qs_matrix
+
+
+# def load_assist09_q(args):
+#     data_dir = 'Dataset/' + args.dataset
+#     data = np.load(os.path.join(data_dir, args.dataset + '.npz'))
+#     y, skill, problem, real_len = data['y'], data['skill'], data['problem'], data['real_len']
+#
+#     args.s_num, args.q_num = data['skill_num'], data['problem_num']
+#
+#     train_data, test_data = train_test_split([y, skill, problem, real_len])  # [y, skill, pro, real_len]
+#     train_y, train_skill, train_problem, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
+#     test_y, test_skill, test_problem, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
+#     args.q_num = max(np.max(train_problem), np.max(test_problem))
+#
+#     train_set = KTDataset(args.q_num, args.s_num, train_problem, train_skill, train_y, train_real_len,
+#                           max_seq_len=args.max_seq_len, remapping=False)
+#     test_set = KTDataset(args.q_num, args.s_num, test_problem, test_skill, test_y, test_real_len,
+#                          max_seq_len=args.max_seq_len, remapping=False)
+#     # todo : load qs_matrix
+#     qs_matrix = None
+#     return train_set, test_set, qs_matrix
 
 
 def load_assist17_s(args):

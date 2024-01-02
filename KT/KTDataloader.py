@@ -55,8 +55,7 @@ class KTDataset(Dataset):
         self.sq_mapping = sq_mapping
         self.q_trans_graph = None
         self.s_trans_graph = None
-        print(self.qs_mapping)
-        print(self.sq_mapping)
+
         if remapping:
             print('remapping the qid and sid to [1,q_num] and [1,s_num]')
             '''
@@ -69,7 +68,7 @@ class KTDataset(Dataset):
                 self.qid_remapping[list(self.qs_mapping.keys())[i - 1]] = i
             for i in range(1, len(self.sq_mapping) + 1):
                 self.sid_remapping[list(self.sq_mapping.keys())[i - 1]] = i
-            print(self.sid_remapping)
+
             # assert 16229 in self.sq_mapping.keys()
             import pickle
             with open('ednet-remapping.pkl', 'wb') as f:
@@ -96,7 +95,7 @@ class KTDataset(Dataset):
         self.qs_matrix = torch.from_numpy(self.qs_matrix)
         assert questions.shape == answers.shape
         self.features = answers_one * self.q_num + self.questions
-        print(self.answers)
+
         assert torch.max(self.answers) <= 1
         assert torch.min(self.answers) >= -1
         # this loading process is way fucking too slow that can be optimized greatly
@@ -329,7 +328,6 @@ def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50, data
                 #     continue
                 seq_len_list.append(min(seq_len, max_seq_len))
 
-
             elif idx % 3 == 1:
                 question_seq = line.split(',')
                 question_seq = [int(s) for s in question_seq][:max_seq_len]
@@ -548,7 +546,6 @@ def verify_dummy_dataset():
 
     from KT.util.visual import plot_multiple_heatmap
     plot_multiple_heatmap([markov_transition_q[:10, :10], q_trans[:10, :10], s_trans])
-
 
 if __name__ == '__main__':
     verify_dummy_dataset()

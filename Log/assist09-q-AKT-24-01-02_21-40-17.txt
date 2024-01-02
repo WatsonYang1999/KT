@@ -1,0 +1,8 @@
+2024-01-02 21:40:17,451 [INFO] Namespace(batch_size=256, checkpoint_dir='C:\\Users\\12574\\Desktop\\KT-Refine\\checkpoints', cuda=True, current_epoch=0, custom_data=False, data_augment=False, dataset='assist09-q', device=device(type='cuda'), dropout=0.2, edge_types=2, embed_dim=128, eval=False, graph_type='PAM', hidden_dim=50, log_file='', lr=0.0001, max_seq_len=200, memory_size=20, metrics=['train_auc', 'train_loss', 'train_acc', 'train_rmse', 'val_auc', 'val_loss', 'val_acc', 'val_rmse'], model='AKT', n_epochs=200, n_heads=4, output_dim=100, pretrain='load', pretrain_embed_file='Dataset/assist09-q/embed_pretrain.npz', q_num=16891, qs_matrix=tensor([[0, 0, 0,  ..., 0, 0, 0],
+        [0, 1, 0,  ..., 0, 0, 0],
+        [0, 1, 0,  ..., 0, 0, 0],
+        ...,
+        [0, 0, 0,  ..., 0, 0, 1],
+        [0, 0, 0,  ..., 0, 0, 1],
+        [0, 0, 0,  ..., 0, 0, 1]], dtype=torch.int32), s_num=111, shuffle=False, train_from_scratch=True)
+2024-01-02 21:40:17,451 [INFO] -----------------------------------------------------------

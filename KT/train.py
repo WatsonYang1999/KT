@@ -3,26 +3,28 @@ import torch
 from torch import nn
 from tqdm import tqdm
 
+from KT.util.decorators import timing_decorator
+
 
 def inference(features, questions, skills, labels, seq_len, model, loss_func):
     if model._get_name() == 'DKT':
         pred = model(features, questions, skills, labels)
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
 
     elif model._get_name() == 'DKT_AUG':
         pred = model(features, questions, labels, seq_len)
         assert torch.all(pred > 0)
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
     elif model._get_name() == 'DKT_PEBG':
         pred = model(questions, labels)
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
         # l2_lambda = 0.00001
         # l2_norm = sum(p.pow(2.0).sum()
         #               for p in model.parameters())
         # loss_kt = loss_kt + l2_lambda * l2_norm
     elif model._get_name() == 'DKT_PLUS':
         pred = model(questions, labels)
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
         # l2_lambda = 0.00001
         # l2_norm = sum(p.pow(2.0).sum()
         #               for p in model.parameters())
@@ -31,7 +33,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
 
         pred = model(features, questions, labels)
 
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
         l2_lambda = 0.001
         l2_norm = sum(p.pow(2.0).sum()
                       for p in model.parameters())
@@ -41,16 +43,18 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
     elif model._get_name() in {'DKVMN', 'DKVMN_RE'}:
         loss_kt, filtered_pred, filtered_target = model.forward(questions, features, labels.reshape(-1, 1))
         from sklearn.metrics import roc_auc_score, accuracy_score
+        from KT.models.Loss import calculate_rmse_sklearn
         filtered_target = filtered_target.cpu().detach().numpy()
         filtered_pred = filtered_pred.cpu().detach().numpy()
         auc = roc_auc_score(filtered_target, filtered_pred)
         filtered_pred[filtered_pred >= 0.5] = 1.0
         filtered_pred[filtered_pred < 0.5] = 0.0
         acc = accuracy_score(filtered_target, filtered_pred)
+        rmse = calculate_rmse_sklearn(filtered_target,filtered_pred)
         exit(-1)
     elif model._get_name() == 'GKT':
         pred, ec_list, rec_list, z_prob_list = model(features, questions)
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
     elif model._get_name() in {'SAKT', 'SAKT_SKILL'}:
         input_len = features.shape[1]
         batch_size = features.shape[0]
@@ -67,7 +71,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
 
         pred = model(features, questions, labels)
 
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
 
 
     elif model._get_name() == 'AKT':
@@ -80,13 +84,14 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
             features,
             questions
         )
-        loss_kt, auc, acc = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels)
     else:
         loss_kt = None
         auc = None
         acc = None
+        rmse = None
 
-    return loss_kt, auc, acc
+    return loss_kt, auc, acc,rmse
 
 
 def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda):
@@ -94,6 +99,7 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     loss_train = []
     auc_train = []
     acc_train = []
+    rmse_train = []
     for batch in tqdm(data_loader, desc="Training batches", leave=False, ncols=80):
         optimizer.zero_grad()
         features, questions, skills, labels, seq_len = batch
@@ -101,10 +107,11 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
         if cuda:
             features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
 
-        loss_kt, auc, acc = inference(features, questions, skills, labels, seq_len, model, loss_func)
+        loss_kt, auc, acc, rmse = inference(features, questions, skills, labels, seq_len, model, loss_func)
         loss_train.append(loss_kt.cpu().detach().numpy())
         auc_train.append(auc)
         acc_train.append(acc)
+        rmse_train.append(rmse)
 
         # print('batch idx: ', batch_idx, 'loss kt: ', loss_kt.item(), 'auc: ', auc, 'acc: ', acc)
 
@@ -115,11 +122,13 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
 
     print('loss_train: {:.10f}'.format(np.mean(loss_train)),
           'auc_train: {:.10f}'.format(np.mean(auc_train)),
-          'acc_train: {:.10f}'.format(np.mean(acc_train))
+          'acc_train: {:.10f}'.format(np.mean(acc_train)),
+          'rmse_train: {:.10f}'.format(np.mean(rmse_train))
           )
     logs['train_loss'].append(np.mean(loss_train))
     logs['train_auc'].append(np.mean(auc_train))
     logs['train_acc'].append(np.mean(acc_train))
+    logs['train_rmse'].append(np.mean(rmse_train))
 
     return model, optimizer
 
@@ -129,6 +138,7 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
     loss_val = []
     auc_val = []
     acc_val = []
+    rmse_val = []
 
     save_dir = '/Users/watsonyang/PycharmProjects/MyKT/save'
     model_file = save_dir + '/' + 'model.pt'
@@ -141,23 +151,25 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
             if cuda:
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
 
-            loss_kt, auc, acc = inference(features, questions, skills, labels, seq_len, model, loss_func)
+            loss_kt, auc, acc, rmse = inference(features, questions, skills, labels, seq_len, model, loss_func)
             loss_val.append(loss_kt.cpu())
             auc_val.append(auc)
             acc_val.append(acc)
+            rmse_val.append(rmse)
 
         print('loss_val: {:.10f}'.format(np.mean(loss_val)),
               'auc_val: {:.10f}'.format(np.mean(auc_val)),
-              'acc_val: {:.10f}'.format(np.mean(acc_val))
+              'acc_val: {:.10f}'.format(np.mean(acc_val)),
+              'rmse_val: {:.10f}'.format(np.mean(rmse_val))
               )
         logs['val_loss'].append(np.mean(loss_val))
         logs['val_auc'].append(np.mean(auc_val))
         logs['val_acc'].append(np.mean(acc_val))
-
+        logs['val_rmse'].append(np.mean(rmse_val))
 
 def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # train loop
-    metrics = ['train_auc', 'train_loss', 'train_acc', 'val_auc', 'val_loss', 'val_acc']
+    metrics = args.metrics
     if hasattr(args, 'logs'):
         logs = args.logs
     else:
@@ -167,7 +179,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     best_val_auc = -1
     best_epoch = -1
     early_stop = True
-    early_stop_interval = 25
+    early_stop_interval = 1000
     if args.current_epoch != 0:
         print(f"start training from previous checkpoints of epoch {args.current_epoch}")
     for epoch in range(args.current_epoch + 1, args.current_epoch + args.n_epochs):
@@ -223,7 +235,7 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     import matplotlib.pyplot as plt
 
     for m in metrics:
-        plt.plot(np.arange(args.current_epoch, args.current_epoch + args.n_epochs, dtype=int), logs[m], label=m)
+        plt.plot(np.arange(args.current_epoch, args.current_epoch + len(logs[m]), dtype=int), logs[m], label=m)
     plt.legend(loc="upper left", shadow=True, title=model._get_name(), fancybox=True)
     plt.show()
     # plot some figures here
@@ -259,6 +271,32 @@ def test(model: nn.Module, data_loader, optimizer, loss_func, n_epochs, cuda=Tru
 
     return hidden_total
 
+def gen_sequence_align_verify_data():
+    check_seq_prediction_align = False
+    max_seq_len = 200
+    if check_seq_prediction_align:
+        custom_s_num = 50
+        custom_size = custom_s_num
+        q_custom = torch.zeros([custom_size, max_seq_len], dtype=int)
+        y_custom =  -1 * torch.ones([custom_size, max_seq_len], dtype=float)
+        f_custom = torch.zeros([custom_size, max_seq_len], dtype=int)
+        print(q_custom[0])
+        for i in range(0,custom_s_num):
+            q_custom[:,i] = i
+            f_custom[:,i] = i
+            y_custom[:,i] = 1.0
+
+        diagonal_matrix = torch.tril(torch.ones((custom_s_num, custom_s_num), dtype=torch.bool))
+        mask = torch.cat([diagonal_matrix,torch.zeros([custom_s_num,max_seq_len-custom_s_num],dtype=torch.bool)],dim=1)
+        mask = (mask==False)
+        q_custom[mask] = 0
+        y_custom[mask] = -1
+        f_custom[mask] = 0
+        print(q_custom)
+        print(y_custom)
+        print(f_custom)
+
+    return q_custom,y_custom,f_custom
 
 def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
     # evaluate the train dataset
@@ -288,7 +326,7 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
     f_custom = torch.IntTensor(f_custom)
 
     print(q_custom)
-    print(q_custom.shape)
+    print('custom question data shape:', q_custom.shape)
     custom_size = q_custom.shape[0]
 
     max_seq_len = 200
@@ -304,32 +342,6 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
     co_relavance_upgrade = torch.zeros([s_num + 1, s_num + 1])
     co_relavance_downgrade = torch.zeros([s_num + 1, s_num + 1])
 
-    def demo(matrix1, matrix2, matrix3):
-        # Create subplots with 1 row and 3 columns
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-        # Plot the first matrix
-        im1 = axes[0].imshow(matrix1, cmap='viridis')
-        axes[0].set_title('Matrix 1')
-
-        # Plot the second matrix
-        im2 = axes[1].imshow(matrix2, cmap='plasma')
-        axes[1].set_title('Matrix 2')
-
-        # Plot the third matrix
-        im3 = axes[2].imshow(matrix3, cmap='inferno')
-        axes[2].set_title('Matrix 3')
-
-        # Add colorbars
-        fig.colorbar(im1, ax=axes[0])
-        fig.colorbar(im2, ax=axes[1])
-        fig.colorbar(im3, ax=axes[2])
-
-        # Adjust layout for better spacing
-        plt.tight_layout()
-
-        # Show the plot
-        plt.show()
 
     custom_bs = 10
     batch_idx = 0
@@ -345,6 +357,10 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
         batch_idx += custom_bs
         pred = pred_batch if pred is None else torch.cat([pred, pred_batch], dim=0)
     print(pred.shape)
+
+    torch.set_printoptions(precision=None, threshold=None, edgeitems=None, linewidth=None, profile=None)
+
+    print(pred[:10,:10])
     exit(-1)
     for i in range(s_num ** 2):
         qi = q_custom[4 * i:4 * i + 4, :]
@@ -361,8 +377,8 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
         print(
             f'co_relavance for {[si, sj]}: update {co_relavance_upgrade[si, sj]} downgrade{co_relavance_downgrade[si, sj]}')
 
-    demo(co_relavance_downgrade.numpy(), co_relavance_upgrade.numpy(),
-         co_relavance_upgrade.numpy() - co_relavance_downgrade.numpy())
+    (co_relavance_downgrade.numpy(), co_relavance_upgrade.numpy(),
+     co_relavance_upgrade.numpy() - co_relavance_downgrade.numpy())
 
     print(f'nums of skill {s_num}')
     for dataset_type, data_loader in data_loaders.items():
@@ -396,14 +412,14 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
         #             print(f'prediction:{pred[i,j]}, true label:{labels[i,j+1]}')
         #
         #
-        #     loss_kt, auc, acc = loss_func(pred, labels)
+        #     loss_kt, auc, acc, rmse = loss_func(pred, labels)
         #     print(loss_kt)
         #     print(auc)
         #     print(acc)
 
     # evaluate the test dataset
 
-
+@timing_decorator
 def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
     s_num = 117
     q_custom = []
@@ -436,37 +452,31 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
     q_custom = torch.cat([q_custom, torch.zeros([custom_size, pad_len], dtype=int)], dim=1).to(device)
     y_custom = torch.cat([y_custom, -1 * torch.ones([custom_size, pad_len], dtype=float)], dim=1).to(device)
     f_custom = torch.cat([f_custom, torch.zeros([custom_size, pad_len], dtype=int)], dim=1).to(device)
+    check_seq_prediction_align = True
+    if check_seq_prediction_align:
+        custom_size = s_num
+        q_custom = torch.zeros([custom_size, pad_len], dtype=int).to(device)
+        y_custom =  -1 * torch.ones([custom_size, pad_len], dtype=float).to(device)
+        f_custom = torch.zeros([custom_size, pad_len], dtype=int).to(device)
+        print(q_custom[0])
+        for i in range(0,s_num):
+            q_custom[:,i] = i
+            f_custom[:,i] = i
+            y_custom[:,i] = 1.0
+
+        diagonal_matrix = torch.tril(torch.ones((s_num, s_num), dtype=torch.bool))
+        mask = torch.cat([diagonal_matrix,torch.zeros([s_num,max_seq_len-s_num],dtype=torch.bool)],dim=1)
+        mask = (mask==False)
+        q_custom[mask] = 0
+        y_custom[mask] = -1
+        f_custom[mask] = 0
+        print(q_custom)
+        print(y_custom)
+        print(f_custom)
 
     import matplotlib.pyplot as plt
     co_relavance_upgrade = torch.zeros([s_num + 1, s_num + 1])
     co_relavance_downgrade = torch.zeros([s_num + 1, s_num + 1])
-
-    def demo(matrix1, matrix2, matrix3):
-        # Create subplots with 1 row and 3 columns
-        fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-        # Plot the first matrix
-        im1 = axes[0].imshow(matrix1, cmap='viridis', origin='lower')
-        axes[0].set_title('Matrix 1')
-
-        # Plot the second matrix
-        im2 = axes[1].imshow(matrix2, cmap='plasma', origin='lower')
-        axes[1].set_title('Matrix 2')
-
-        # Plot the third matrix
-        im3 = axes[2].imshow(matrix3, cmap='inferno', origin='lower')
-        axes[2].set_title('Matrix 3')
-
-        # Add colorbars
-        fig.colorbar(im1, ax=axes[0])
-        fig.colorbar(im2, ax=axes[1])
-        fig.colorbar(im3, ax=axes[2])
-
-        # Adjust layout for better spacing
-        plt.tight_layout()
-
-        # Show the plot
-        plt.show()
 
     custom_bs = 10
     batch_idx = 0
@@ -482,6 +492,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
         batch_idx += custom_bs
         pred = pred_batch if pred is None else torch.cat([pred, pred_batch], dim=0)
     print(pred.shape)
+    print(pred)
 
     for i in range(s_num ** 2):
         qi = q_custom[4 * i:4 * i + 4, :]
@@ -509,8 +520,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
         i, j = dim1[_i], dim2[_i]
         print(f'({i},{j}) : {co_relavance_upgrade[i, j]}')
     exit(-1)
-    demo(co_relavance_downgrade.numpy(), co_relavance_upgrade.numpy(),
-         co_relavance_upgrade.numpy() - co_relavance_downgrade.numpy())
+
 
     for dataset_type, data_loader in data_loaders.items():
         print(f'evaluating dataset : {dataset_type}')
@@ -525,7 +535,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
             pred = model(questions, features, labels)
 
-            loss_kt, auc, acc = loss_func(pred, labels)
+            loss_kt, auc, acc, rmse = loss_func(pred, labels)
             print(loss_kt)
             print(auc)
             print(acc)
@@ -546,7 +556,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
     # else:
     #     pred = model(features, questions, labels)
     #
-    # loss_kt, auc, acc = loss_func(pred, labels)
+    # loss_kt, auc, acc, rmse = loss_func(pred, labels)
 
 
 def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
@@ -567,7 +577,7 @@ def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
             pred = model(features, questions, labels)
             assert torch.all(pred > 0)
             pred_copy = pred.clone()
-            loss_kt, auc, acc = loss_func(pred, labels)
+            loss_kt, auc, acc, rmse = loss_func(pred, labels)
 
             def print_result(q, s, y, l, p, loss, auc, acc):
                 print(l)
@@ -585,7 +595,7 @@ def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
 
                 print(f'loss {loss} auc {auc} acc {acc}')
 
-            print_result(questions, skills, labels, seq_len, pred_copy, loss_kt, auc, acc)
+            print_result(questions, skills, labels, seq_len, pred_copy, loss_kt, auc, acc, rmse)
 
 
 def evaluate(model: nn.Module, data_loaders, loss_func, cuda=False):
