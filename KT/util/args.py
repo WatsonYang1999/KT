@@ -37,6 +37,9 @@ def set_parser():
     parser.add_argument('--custom_data', type=str_to_bool, default='False',
                         help='Use your own custom data')
 
+    parser.add_argument('--skill_level_eval', type=str_to_bool, default='True',
+                        help='Evaluate the model on skill_level and try to address the label leakage issue')
+
     parser.add_argument('--lr', type=float, default=0.0001, help='Initial learning rate.')
     parser.add_argument('--current_epoch', type=int, default=0)
     parser.add_argument('--n_epochs', type=int, default=20, help='Total Epochs.')

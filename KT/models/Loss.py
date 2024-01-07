@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
-from sklearn.metrics import roc_auc_score,mean_squared_error
+from sklearn.metrics import roc_auc_score, mean_squared_error
 
 
 def accuracy(output, labels):
@@ -9,7 +9,6 @@ def accuracy(output, labels):
     correct = preds.eq(labels.reshape(-1)).double()
     correct = correct.sum()
     return correct / len(labels)
-
 
 
 def calculate_rmse_sklearn(actual_values, predicted_values):
@@ -35,7 +34,7 @@ class KTSequenceLoss(nn.Module):
     def __init__(self):
         super(KTSequenceLoss, self).__init__()
 
-    def forward(self, pred_answers, real_answers):
+    def forward(self, pred_answers, real_answers, seq_len=None):
         r"""
         Parameters:
             pred_answers: the correct probability of questions answered at the next timestamp
@@ -69,7 +68,7 @@ class KTSequenceLoss(nn.Module):
 
         except ValueError as e:
 
-            auc, acc,rmse = -1, -1,-1
+            auc, acc, rmse = -1, -1, -1
 
         # calculate NLL loss
         '''
@@ -88,25 +87,28 @@ class KTSequenceLoss(nn.Module):
         loss = nll_loss(pred_answers, real_answers.long())
         if torch.isnan(loss):
             raise ValueError(f"Nan value in loss:\n pred: {pred_answers} \nlabels: {real_answers}")
-        return loss, auc, acc,rmse
+        return loss, auc, acc, rmse
+
 
 class KTLastInteractionLoss(nn.Module):
 
     def __init__(self):
         super(KTLastInteractionLoss, self).__init__()
+        self.embedding = None
 
-    def forward(self, pred_answers, real_answers,seq_len = None):
+    def forward(self, pred_answers, real_answers, seq_len=None):
         r"""
         Parameters:
             pred_answers: the correct probability of questions answered at the next timestamp
             real_answers: the real results(0 or 1) of questions answered at the next timestamp
             seq_len: calculation will be accelarated greatly if seq_len provided
         Shape:
-            pred_answers: [batch_size, max_seq_len - 1]
-            real_answers: [batch_size, max_seq_len]
+            pred_answers: [batch_size, max_seq_len - 1] : [p1,.....pt]
+            real_answers: [batch_size, max_seq_len]     [y0,y1,....yt]
             seq_len: [batch_size]
         Return:
         """
+
         bs = pred_answers.shape[0]
 
         if seq_len is None:
@@ -114,21 +116,34 @@ class KTLastInteractionLoss(nn.Module):
                 get the first padding value position to know seq len
             '''
 
+        pos_mask = torch.zeros_like(real_answers).bool()
+        for i in range(bs):
+            pos_mask[i, seq_len[i] - 1] = True
 
         assert pred_answers.shape[1] == real_answers.shape[1] - 1
+        '''
+            他妈的，在这里错了100次，老子真是服了
+        '''
+        real_answers[~pos_mask] = -1
 
         real_answers = real_answers[:, 1:]  # timestamp=1 ~ T
         # real_answers shape: [batch_size, seq_len - 1]
         # Here we can directly use nn.BCELoss, but this loss doesn't have ignore_index function
+        '''
+            where we modify, the seq before qt , or the last interaction will be neglected
+        '''
+
         answer_mask = torch.ne(real_answers, -1)
 
         pred_one, pred_zero = pred_answers, 1.0 - pred_answers  # [batch_size, seq_len - 1]
         assert not torch.any(torch.isnan(pred_answers))
         # calculate auc and accuracy metrics
         try:
+
             y_true = real_answers[answer_mask].cpu().detach().numpy()
             y_pred = pred_one[answer_mask].cpu().detach().numpy()
-
+            print(y_true)
+            print(y_pred)
             auc = roc_auc_score(y_true, y_pred)  # may raise ValueError
             rmse = calculate_rmse_sklearn(y_true, y_pred)
             output = torch.cat((pred_zero[answer_mask].reshape(-1, 1), pred_one[answer_mask].reshape(-1, 1)), dim=1)
@@ -139,7 +154,7 @@ class KTLastInteractionLoss(nn.Module):
 
         except ValueError as e:
 
-            auc, acc,rmse = -1, -1,-1
+            auc, acc, rmse = -1, -1, -1
 
         # calculate NLL loss
         '''
@@ -158,12 +173,25 @@ class KTLastInteractionLoss(nn.Module):
         loss = nll_loss(pred_answers, real_answers.long())
         if torch.isnan(loss):
             raise ValueError(f"Nan value in loss:\n pred: {pred_answers} \nlabels: {real_answers}")
-        return loss, auc, acc,rmse
+        return loss, auc, acc, rmse
+
 
 if __name__ == '__main__':
-    loss = KTSequenceLoss()
+    loss = KTLastInteractionLoss()
 
-    pred = torch.FloatTensor([[0.01,0.01,0.5,0.99]])
-    labels = torch.IntTensor([[1., 0.,1.,1.,1.]])
+    pred = torch.FloatTensor([
+        [0.1, 0.2, 0.5, 0.9],  # 0.2
+        [0.1, 0.2, 0.5, 0.9],  # 0.5
+        [0.1, 0.3, 0.5, 0.9],  # 0.9
+    ])
+    labels = torch.IntTensor([
+        [1., 0., -1., -1., -1.], # 0
+        [1., 0., 1., -1, -1],    # 1
+        [1., 0., 1., 1., -1],    # 1
+    ])
+    seq_len = torch.IntTensor([2, 3, 4])
 
-    print(loss(pred, labels))
+    loss ,auc, acc ,rmse = loss(pred, labels, seq_len)
+    print(loss,auc,acc,rmse)
+    actual_rmse = calculate_rmse_sklearn([0.1,0.2,0.5],[0.,1.,1.])
+    print(rmse,actual_rmse)

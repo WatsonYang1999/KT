@@ -9,22 +9,22 @@ from KT.util.decorators import timing_decorator
 def inference(features, questions, skills, labels, seq_len, model, loss_func):
     if model._get_name() == 'DKT':
         pred = model(features, questions, skills, labels)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
 
     elif model._get_name() == 'DKT_AUG':
         pred = model(features, questions, labels, seq_len)
         assert torch.all(pred > 0)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
     elif model._get_name() == 'DKT_PEBG':
         pred = model(questions, labels)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
         # l2_lambda = 0.00001
         # l2_norm = sum(p.pow(2.0).sum()
         #               for p in model.parameters())
         # loss_kt = loss_kt + l2_lambda * l2_norm
     elif model._get_name() == 'DKT_PLUS':
         pred = model(questions, labels)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
         # l2_lambda = 0.00001
         # l2_norm = sum(p.pow(2.0).sum()
         #               for p in model.parameters())
@@ -33,7 +33,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
 
         pred = model(features, questions, labels)
 
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
         l2_lambda = 0.001
         l2_norm = sum(p.pow(2.0).sum()
                       for p in model.parameters())
@@ -54,7 +54,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
         exit(-1)
     elif model._get_name() == 'GKT':
         pred, ec_list, rec_list, z_prob_list = model(features, questions)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
     elif model._get_name() in {'SAKT', 'SAKT_SKILL'}:
         input_len = features.shape[1]
         batch_size = features.shape[0]
@@ -71,7 +71,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
 
         pred = model(features, questions, labels)
 
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
 
 
     elif model._get_name() == 'AKT':
@@ -84,7 +84,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
             features,
             questions
         )
-        loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
     else:
         loss_kt = None
         auc = None
@@ -187,9 +187,10 @@ def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
 
         train_epoch(model, data_loader=data_loaders['train_loader'], optimizer=optimizer,
                     loss_func=loss_func, logs=logs, cuda=args.cuda)
-
+        from KT.models.Loss import KTLastInteractionLoss
+        last_inter_loss = KTLastInteractionLoss()
         val_epoch(model, data_loader=data_loaders['test_loader'], optimizer=optimizer,
-                  loss_func=loss_func, logs=logs, cuda=args.cuda)
+                  loss_func=last_inter_loss, logs=logs, cuda=args.cuda)
 
         if max(logs['val_auc']) > best_val_auc:
             best_val_auc = max(logs['val_auc'])
@@ -412,7 +413,7 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
         #             print(f'prediction:{pred[i,j]}, true label:{labels[i,j+1]}')
         #
         #
-        #     loss_kt, auc, acc, rmse = loss_func(pred, labels)
+        #     loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
         #     print(loss_kt)
         #     print(auc)
         #     print(acc)
@@ -535,7 +536,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
             pred = model(questions, features, labels)
 
-            loss_kt, auc, acc, rmse = loss_func(pred, labels)
+            loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
             print(loss_kt)
             print(auc)
             print(acc)
@@ -556,7 +557,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
     # else:
     #     pred = model(features, questions, labels)
     #
-    # loss_kt, auc, acc, rmse = loss_func(pred, labels)
+    # loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
 
 
 def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
@@ -577,7 +578,7 @@ def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
             pred = model(features, questions, labels)
             assert torch.all(pred > 0)
             pred_copy = pred.clone()
-            loss_kt, auc, acc, rmse = loss_func(pred, labels)
+            loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
 
             def print_result(q, s, y, l, p, loss, auc, acc):
                 print(l)
