@@ -4,7 +4,7 @@ from datetime import datetime
 
 import torch
 
-from KT.models.Loss import KTLoss
+from KT.models.Loss import KTSequenceLoss
 from KT.models.Pretrain import embedding_pretrain
 from KT.train import train, evaluate
 from KT.util.args import set_parser
@@ -43,7 +43,7 @@ model, optimizer = load_model(args)
 
 model = model.to(args.device)
 get_model_size(model)
-kt_loss = KTLoss()
+kt_loss = KTSequenceLoss()
 
 
 def set_logger(args):

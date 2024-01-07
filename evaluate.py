@@ -3,7 +3,7 @@ import os
 from util.kt_util import load_model, load_dataset
 from util.args import set_parser
 from KT.train import train
-from KT.models.Loss import KTLoss
+from KT.models.Loss import KTSequenceLoss
 from KT.models.Pretrain import embedding_pretrain
 from datetime import datetime
 import logging
@@ -56,7 +56,7 @@ elif args.pretrain == 'load':
 # load model
 model, optimizer = load_model(args)
 model = model.to(args.device)
-kt_loss = KTLoss()
+kt_loss = KTSequenceLoss()
 
 # train model
 time_training_begin = datetime.now()

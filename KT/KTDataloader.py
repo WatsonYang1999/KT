@@ -1,3 +1,5 @@
+import logging
+
 import numpy
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -8,6 +10,7 @@ import numpy as np
 from KT.util.decorators import timing_decorator
 
 random_seed = 42
+
 
 def convert_to_tensor(arr):
     """
@@ -27,7 +30,7 @@ def convert_to_tensor(arr):
         torch_tensor = torch.from_numpy(arr)
 
         return torch_tensor
-    elif isinstance(arr,torch.Tensor):
+    elif isinstance(arr, torch.Tensor):
         return arr
     else:
         raise ValueError("Input is not a NumPy array")
@@ -38,6 +41,10 @@ class KTDataset(Dataset):
                  remapping=False, item_start_from_one=True):
 
         super(KTDataset, self).__init__()
+        self.Q_PADDING = 0
+        self.S_PADDING = 0
+        self.A_PADDING = -1
+        self.I_PADDING = 0
 
         self.q_num = q_num
         self.s_num = s_num
@@ -48,13 +55,18 @@ class KTDataset(Dataset):
         #     self.skills = self.questions
         self.answers = convert_to_tensor(answers)
         self.seq_len = convert_to_tensor(seq_len)
+
         self.max_seq_len = max_seq_len
         # need some calculation
+
+        assert torch.max(self.seq_len) <= self.max_seq_len
 
         self.qs_mapping = qs_mapping
         self.sq_mapping = sq_mapping
         self.q_trans_graph = None
         self.s_trans_graph = None
+
+        self.return_all_length_seq = False
 
         if remapping:
             print('remapping the qid and sid to [1,q_num] and [1,s_num]')
@@ -84,7 +96,7 @@ class KTDataset(Dataset):
                 self.skills = sid_vectorized_mapping(self.skills)
 
             # re-calculate qs-matrix base on remapped index
-            self.qs_matrix = np.ndarray([self.q_num + 1, self.s_num + 1], dtype=int)
+            self.qs_matrix = np.zeros([self.q_num + 1, self.s_num + 1], dtype=int)
             for q, s_list in qs_mapping.items():
                 qid_remapped = self.qid_remapping[q]
                 s_list = [self.sid_remapping[s] for s in s_list]
@@ -100,6 +112,7 @@ class KTDataset(Dataset):
         assert torch.min(self.answers) >= -1
         # this loading process is way fucking too slow that can be optimized greatly
 
+
     def init_by_raw_sequences(self, q_seq, a_seq, qs_mapping):
         pass
 
@@ -108,9 +121,13 @@ class KTDataset(Dataset):
             this part requires a lot of update to fit different datasets
         '''
 
+        if self.return_all_length_seq:
+            return self.s_feat[index], self.s_question[index], self.s_skill[index], self.s_answer[index], self.s_seq_len[index]
         return self.features[index], self.questions[index], self.skills[index], self.answers[index], self.seq_len[index]
 
     def __len__(self):
+        if self.return_all_length_seq:
+            return len(self.s_feat)
         return len(self.features)
 
     def set_qs_mapping(self, qs_mapping):
@@ -121,6 +138,16 @@ class KTDataset(Dataset):
 
     def get_qs_matrix(self):
         return self.qs_matrix
+
+    def q2s(self,qid):
+        row = self.qs_matrix[qid,:]
+        skills = [sid for sid, value in enumerate(row) if value > 0]
+        return skills
+
+    def s2q(self,sid):
+        col = self.qs_matrix[:,sid]
+        questions = [qid for qid, value in enumerate(col) if value > 0]
+        return questions
 
     def analyse(self):
         q_num = 0
@@ -291,11 +318,118 @@ class KTDataset(Dataset):
 
         return self.q_trans_graph
 
+    @timing_decorator
+    def generate_seq_all_length(self):
+        from copy import deepcopy
+        self.s_feat = None
+        self.s_question = None
+        self.s_seq_len = []
+        self.s_skill = None
+        self.s_answer = None
+
+        def append_row(array: np.ndarray, row: np.ndarray):
+            if array is None:
+                return row
+            return np.vstack((array, row))
+
+        def generate_all_len_array(input_array, seq_len, pad_val):
+
+            result_array = pad_val * np.ones_like(input_array)
+
+            result_array = np.tile(result_array, (seq_len, 1))
+
+            for i in range(seq_len):
+                result_array[i, :i + 1] = input_array[:i + 1]
+
+            return result_array[1:,:]
+
+        for idx, (feat, question, skill, answer, seq_len) in enumerate(self):
+
+            if seq_len < 2:
+                continue
+
+            self.s_feat = append_row(self.s_feat, generate_all_len_array(feat, seq_len, self.I_PADDING))
+            self.s_question = append_row(self.s_question, generate_all_len_array(question, seq_len, self.Q_PADDING))
+            self.s_answer = append_row(self.s_answer, generate_all_len_array(answer, seq_len, self.A_PADDING))
+            self.s_skill = append_row(self.s_skill, generate_all_len_array(skill, seq_len, self.S_PADDING))
+            self.s_seq_len.extend([i for i in range(2,seq_len+1)])
+            assert self.s_feat.shape[0] == len(self.s_seq_len)
+
+        self.s_seq_len = torch.IntTensor(self.s_seq_len)
+
+        self.return_all_length_seq = True
+
+    @timing_decorator
+    def generate_multi_skill_seq(self):
+        """
+            make sure this function is used on question-level sequence, that the multi-skill interaction
+            is NOT split into multi interaction
+            should we just do it in preprocessing
+
+        """
+
+        interaction_s = []
+        question_s = []
+        answer_s = []
+        skill_s = []
+        seq_len_s = []
+        idx = 0
+
+        for feat, question, skill, answer, seq_len in self:
+
+            qt = question[seq_len-1]
+            at = answer[seq_len-1]
+            if seq_len < self.max_seq_len:
+                assert question[seq_len] == self.Q_PADDING
+            q_seq_old = question[:seq_len-1]
+            a_seq_old = answer[:seq_len-1]
+            q_seq_old_duplicate = []
+            a_seq_old_duplicate = []
+            s_seq_old = []
+            for i in range(len(q_seq_old)):
+                qi = q_seq_old[i]
+                ai = a_seq_old[i]
+                for s in self.q2s(qi):
+                    q_seq_old_duplicate.append(qi)
+                    a_seq_old_duplicate.append(ai)
+                    s_seq_old.append(s)
+            for s in self.q2s(qt):
+                question_s.append(q_seq_old_duplicate + [qt])
+                answer_s.append(a_seq_old_duplicate + [at])
+                skill_s.append(s_seq_old + [s])
+
+
+        '''
+            base on new q_seq, a_seq, s_seq, re-generate the features tensors
+        '''
+
+
+        def pad_or_cut(seq,pad_value,max_seq_len):
+            if len(seq) > max_seq_len:
+                return seq[:max_seq_len]
+            return seq + [pad_value for i in range(max_seq_len - len(seq))]
+
+        for i in range(len(question_s)):
+
+            seq_len_s.append(min(self.max_seq_len,len(question_s[i])))
+            question_s[i] = pad_or_cut(question_s[i],self.Q_PADDING,self.max_seq_len)
+            skill_s[i] = pad_or_cut(skill_s[i],self.S_PADDING,self.max_seq_len)
+            answer_s[i] = pad_or_cut(answer_s[i],self.A_PADDING,self.max_seq_len)
+
+        self.s_seq_len = torch.IntTensor(seq_len_s)
+        self.s_question = torch.IntTensor(question_s)
+        self.s_skill = torch.IntTensor(skill_s)
+        self.s_answer = torch.IntTensor(answer_s)
+        self.s_feat = self.s_question  + self.s_answer * self.q_num
+        self.s_feat[self.s_question == self.Q_PADDING] = self.I_PADDING
+
+        self.return_all_length_seq = True
 class KTDataset_SA(KTDataset):
     def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len):
         super(KTDataset_SA, self).__init__(q_num, s_num, questions, skills, answers, seq_len, max_seq_len)
         answers_one = (answers == 1.0)
         self.features = answers_one * self.s_num + self.skills
+
 
 def pad_collate(batch):
     (features, questions, answers) = zip(*batch)
@@ -306,6 +440,7 @@ def pad_collate(batch):
     question_pad = pad_sequence(questions, batch_first=True, padding_value=-1)
     answer_pad = pad_sequence(answers, batch_first=True, padding_value=-1)
     return feature_pad, question_pad, answer_pad
+
 
 def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50, data_shuffle=True):
     seq_len_list = []
@@ -385,15 +520,11 @@ def load_KTData(data_path, question_num, max_seq_len, ratio, batch_size=50, data
     return train_loader, test_loader
 
 
-import numpy as np
-
-
 def is_ascending(seq):
     if len(seq) == 1: return False
     for i in range(0, len(seq) - 1):
         if seq[i] > seq[i - 1]: return False
     return True
-
 
 def preprocess():
     csv_path = "/Users/watsonyang/PycharmProjects/MyKT/Dataset/assist2009_updated/assist2009_updated_test.csv"
@@ -463,12 +594,13 @@ def wtf_get_question_trans_graph():
     #
     # assert q_trans_graph == target
 
-def verify_dummy_dataset():
 
+def verify_dummy_dataset():
     q_num = 100
     s_num = 10
 
-    markov_transition_q = torch.rand([q_num,q_num])
+    markov_transition_q = torch.rand([q_num, q_num])
+
     def random_split_stick(total_length, n):
         # 生成 n-1 个随机数作为分割点
         split_points = np.sort(np.random.uniform(0, total_length, n - 1))
@@ -481,10 +613,11 @@ def verify_dummy_dataset():
             lengths[i] = split_points[i] - split_points[i - 1]
 
         return lengths
+
     for _ in range(q_num):
-        prob_i = random_split_stick(1,q_num)
-        prob_i = prob_i/np.sum(prob_i)
-        markov_transition_q[_,:] = torch.tensor(prob_i)
+        prob_i = random_split_stick(1, q_num)
+        prob_i = prob_i / np.sum(prob_i)
+        markov_transition_q[_, :] = torch.tensor(prob_i)
 
     @timing_decorator
     def generate_sequence(transition_matrix, initial_state, sequence_length):
@@ -497,16 +630,16 @@ def verify_dummy_dataset():
             # print(f'transition for state {_}',transition_matrix[current_state])
             wtf = transition_matrix[current_state]
             wtf = wtf.numpy()
-            wtf = wtf/np.sum(wtf)
+            wtf = wtf / np.sum(wtf)
             next_state = np.random.choice(len(transition_matrix), p=wtf)
             sequence.append(next_state)
             current_state = next_state
 
         return sequence
+
     data_num = 200
     max_seq_len = 200
-    markov_seq = generate_sequence(markov_transition_q, initial_state=1,sequence_length=2*data_num*max_seq_len)
-
+    markov_seq = generate_sequence(markov_transition_q, initial_state=1, sequence_length=2 * data_num * max_seq_len)
 
     print(markov_seq)
 
@@ -514,12 +647,12 @@ def verify_dummy_dataset():
     for i in range(data_num):
         for j in range(max_seq_len):
             k = i * max_seq_len + j
-            questions[i,j] = markov_seq[k]
+            questions[i, j] = markov_seq[k]
     questions = questions.int()
     print(questions)
     skills = questions
-    qs_mapping = {_ : set() for _ in range(q_num)}
-    sq_mapping = {_ :set() for _ in range(s_num)}
+    qs_mapping = {_: set() for _ in range(q_num)}
+    sq_mapping = {_: set() for _ in range(s_num)}
 
     # for i in range(0,s_num):
     #     for j in range(0,q_num):
@@ -527,8 +660,8 @@ def verify_dummy_dataset():
     #         qs_mapping[j].add(i)
     #         sq_mapping[i].add(j)
     for j in range(0, q_num):
-        qs_mapping[j].add(j%10)
-        sq_mapping[j%10].add(j)
+        qs_mapping[j].add(j % 10)
+        sq_mapping[j % 10].add(j)
 
     answers = torch.ones_like(questions).int()
     seq_len = torch.IntTensor([max_seq_len, max_seq_len])
@@ -546,7 +679,29 @@ def verify_dummy_dataset():
 
     from KT.util.visual import plot_multiple_heatmap
     plot_multiple_heatmap([markov_transition_q[:10, :10], q_trans[:10, :10], s_trans])
+    return dummyset
+
+
+def verify_generate_multi_skill_sequence():
+    from KT.util.args import set_parser
+    args = set_parser().parse_args()
+    from KT.util.kt_util import load_dummy_dataset
+
+    trainset, testset, qs_matrix = load_dummy_dataset(args)
+
+    testset.generate_seq_all_length()
+    testset.generate_multi_skill_seq()
+
+    #
+    for f,q,s,a,l in testset:
+        print('--------------------')
+        print(f[:l])
+        print(q[:l])
+        print(s[:l])
+        print(a[:l])
+        print(l)
+
 
 if __name__ == '__main__':
-    verify_dummy_dataset()
+    verify_generate_multi_skill_sequence()
     # wtf_get_question_trans_graph()

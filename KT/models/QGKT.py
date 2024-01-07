@@ -304,7 +304,7 @@ if __name__ == '__main__':
     gkt = QGKT(question_num=q_num, skill_num=s_num, hidden_dim=50, embedding_dim=100,
                qs_matrix=qs_matrix, s_graph=s_graph_gen(s_num))
     from util.kt_util import get_model_size
-    from KT.models.Loss import KTLoss
+    from KT.models.Loss import KTSequenceLoss
     get_model_size(gkt)
 
     for i in range(0, 1000):
@@ -312,7 +312,7 @@ if __name__ == '__main__':
         f = torch.where(a == 0, q + q_num, q)
         y_hat = gkt.forward(f, q, a)
 
-        criterion = KTLoss()
+        criterion = KTSequenceLoss()
         print(a)
         print(y_hat)
         loss, auc, acc = criterion(y_hat, a)
