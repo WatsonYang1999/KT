@@ -49,7 +49,7 @@ class KTDataset(Dataset):
         self.q_num = q_num
         self.s_num = s_num
         self.questions = convert_to_tensor(questions)
-        self.skills = skills
+        self.skills = convert_to_tensor(skills)
 
         # if skills is None:
         #     self.skills = self.questions
@@ -90,10 +90,10 @@ class KTDataset(Dataset):
 
             qid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.qid_remapping[x])
 
-            self.questions = qid_vectorized_mapping(self.questions)
+            self.questions = convert_to_tensor(qid_vectorized_mapping(self.questions))
             if self.skills is not None:
                 sid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.sid_remapping[x])
-                self.skills = sid_vectorized_mapping(self.skills)
+                self.skills = convert_to_tensor(sid_vectorized_mapping(self.skills))
 
             # re-calculate qs-matrix base on remapped index
             self.qs_matrix = np.zeros([self.q_num + 1, self.s_num + 1], dtype=int)
@@ -103,15 +103,14 @@ class KTDataset(Dataset):
                 for sid_remapped in s_list:
                     self.qs_matrix[qid_remapped, sid_remapped] = 1
 
-        answers_one = (answers == 1.0)
+        answers_one = (self.answers == 1.0)
         self.qs_matrix = torch.from_numpy(self.qs_matrix)
         assert questions.shape == answers.shape
         self.features = answers_one * self.q_num + self.questions
-
+        assert isinstance(self.features, torch.Tensor)
         assert torch.max(self.answers) <= 1
         assert torch.min(self.answers) >= -1
         # this loading process is way fucking too slow that can be optimized greatly
-
 
     def init_by_raw_sequences(self, q_seq, a_seq, qs_mapping):
         pass
@@ -122,13 +121,68 @@ class KTDataset(Dataset):
         '''
 
         if self.return_all_length_seq:
-            return self.s_feat[index], self.s_question[index], self.s_skill[index], self.s_answer[index], self.s_seq_len[index]
+            return self.s_feat[index], self.s_question[index], self.s_skill[index], self.s_answer[index], \
+                   self.s_seq_len[index]
         return self.features[index], self.questions[index], self.skills[index], self.answers[index], self.seq_len[index]
 
     def __len__(self):
         if self.return_all_length_seq:
             return len(self.s_feat)
         return len(self.features)
+
+    def save(self, datapath):
+        data_dict = {
+            'features': self.features,
+            'questions': self.questions,
+            'skills': self.skills,
+            'answers': self.answers,
+            'seq_len': self.seq_len if self.return_all_length_seq else None,
+            's_feat': self.s_feat,
+            's_question': self.s_question,
+            's_skill': self.s_skill,
+            's_answer': self.s_answer,
+            's_seq_len': self.s_seq_len,
+            'return_all_length_seq': self.return_all_length_seq
+        }
+        torch.save(data_dict, datapath)
+
+    def load(self, datapath):
+        data_dict = torch.load(datapath)
+        return_all_length_seq = data_dict.get('return_all_length_seq', False)
+
+        self.features = data_dict['features'],
+        self.questions = data_dict['questions'],
+        self.skills = data_dict['skills'],
+        self.answers = data_dict['answers'],
+        self.seq_len = data_dict['seq_len'],
+        self.return_all_length_seq = return_all_length_seq
+
+        if return_all_length_seq:
+            self.s_feat = data_dict['s_feat'],
+            self.s_question = data_dict['s_question'],
+            self.s_skill = data_dict['s_skill'],
+            self.s_answer = data_dict['s_answer'],
+            self.s_seq_len = data_dict['s_seq_len'],
+            self.return_all_length_seq = return_all_length_seq
+
+    def merge(self, another_kt_set):
+        if not isinstance(another_kt_set, KTDataset):
+            raise ValueError("Can only merge with datasets of the same class (MyDataClass)")
+
+        self.seq_len = torch.cat([self.seq_len, another_kt_set.seq_len])
+        self.features = torch.vstack([self.features, another_kt_set.features])
+        self.questions = torch.vstack([self.questions, another_kt_set.questions])
+        self.skills = torch.vstack([self.skills, another_kt_set.skills])
+        self.answers = torch.vstack([self.answers, another_kt_set.answers])
+
+        if hasattr(self, 's_seq_len'):
+            self.s_seq_len = torch.cat([self.s_seq_len, another_kt_set.s_seq_len])
+            self.s_feat = torch.vstack([self.s_feat, another_kt_set.s_feat])
+            self.s_skill = torch.vstack([self.s_skill, another_kt_set.s_skill])
+            self.s_question = torch.vstack([self.s_question, another_kt_set.s_question])
+            self.s_answer = torch.vstack([self.s_answer, another_kt_set.s_answer])
+
+        return self
 
     def set_qs_mapping(self, qs_mapping):
         self.qs_mapping = qs_mapping
@@ -139,13 +193,13 @@ class KTDataset(Dataset):
     def get_qs_matrix(self):
         return self.qs_matrix
 
-    def q2s(self,qid):
-        row = self.qs_matrix[qid,:]
+    def q2s(self, qid):
+        row = self.qs_matrix[qid, :]
         skills = [sid for sid, value in enumerate(row) if value > 0]
         return skills
 
-    def s2q(self,sid):
-        col = self.qs_matrix[:,sid]
+    def s2q(self, sid):
+        col = self.qs_matrix[:, sid]
         questions = [qid for qid, value in enumerate(col) if value > 0]
         return questions
 
@@ -227,11 +281,11 @@ class KTDataset(Dataset):
             self.seq_len.append(l1)
             self.seq_len.append(l2)
 
-        self.features = np.array(self.features)
-        self.questions = np.array(self.questions)
-        self.skills = np.array(self.skills)
-        self.answers = np.array(self.answers)
-        self.seq_len = np.array(self.seq_len)
+        self.features = torch.Tensor(self.features)
+        self.questions = torch.Tensor(self.questions)
+        self.skills = torch.Tensor(self.skills)
+        self.answers = torch.Tensor(self.answers)
+        self.seq_len = torch.Tensor(self.seq_len)
 
     def purify(self, min_len=10):
         pass
@@ -341,7 +395,7 @@ class KTDataset(Dataset):
             for i in range(seq_len):
                 result_array[i, :i + 1] = input_array[:i + 1]
 
-            return result_array[1:,:]
+            return result_array[1:, :]
 
         for idx, (feat, question, skill, answer, seq_len) in enumerate(self):
 
@@ -352,7 +406,7 @@ class KTDataset(Dataset):
             self.s_question = append_row(self.s_question, generate_all_len_array(question, seq_len, self.Q_PADDING))
             self.s_answer = append_row(self.s_answer, generate_all_len_array(answer, seq_len, self.A_PADDING))
             self.s_skill = append_row(self.s_skill, generate_all_len_array(skill, seq_len, self.S_PADDING))
-            self.s_seq_len.extend([i for i in range(2,seq_len+1)])
+            self.s_seq_len.extend([i for i in range(2, seq_len + 1)])
             assert self.s_feat.shape[0] == len(self.s_seq_len)
 
         self.s_seq_len = torch.IntTensor(self.s_seq_len)
@@ -375,14 +429,14 @@ class KTDataset(Dataset):
         seq_len_s = []
         idx = 0
 
-        for feat, question, skill, answer, seq_len in self:
-
-            qt = question[seq_len-1]
-            at = answer[seq_len-1]
+        for idx, (feat, question, skill, answer, seq_len) in enumerate(self):
+            print(idx, len(self))
+            qt = question[seq_len - 1]
+            at = answer[seq_len - 1]
             if seq_len < self.max_seq_len:
                 assert question[seq_len] == self.Q_PADDING
-            q_seq_old = question[:seq_len-1]
-            a_seq_old = answer[:seq_len-1]
+            q_seq_old = question[:seq_len - 1]
+            a_seq_old = answer[:seq_len - 1]
             q_seq_old_duplicate = []
             a_seq_old_duplicate = []
             s_seq_old = []
@@ -398,32 +452,31 @@ class KTDataset(Dataset):
                 answer_s.append(a_seq_old_duplicate + [at])
                 skill_s.append(s_seq_old + [s])
 
-
         '''
             base on new q_seq, a_seq, s_seq, re-generate the features tensors
         '''
 
-
-        def pad_or_cut(seq,pad_value,max_seq_len):
+        def pad_or_cut(seq, pad_value, max_seq_len):
             if len(seq) > max_seq_len:
                 return seq[:max_seq_len]
             return seq + [pad_value for i in range(max_seq_len - len(seq))]
 
         for i in range(len(question_s)):
-
-            seq_len_s.append(min(self.max_seq_len,len(question_s[i])))
-            question_s[i] = pad_or_cut(question_s[i],self.Q_PADDING,self.max_seq_len)
-            skill_s[i] = pad_or_cut(skill_s[i],self.S_PADDING,self.max_seq_len)
-            answer_s[i] = pad_or_cut(answer_s[i],self.A_PADDING,self.max_seq_len)
+            seq_len_s.append(min(self.max_seq_len, len(question_s[i])))
+            question_s[i] = pad_or_cut(question_s[i], self.Q_PADDING, self.max_seq_len)
+            skill_s[i] = pad_or_cut(skill_s[i], self.S_PADDING, self.max_seq_len)
+            answer_s[i] = pad_or_cut(answer_s[i], self.A_PADDING, self.max_seq_len)
 
         self.s_seq_len = torch.IntTensor(seq_len_s)
         self.s_question = torch.IntTensor(question_s)
         self.s_skill = torch.IntTensor(skill_s)
         self.s_answer = torch.IntTensor(answer_s)
-        self.s_feat = self.s_question  + self.s_answer * self.q_num
+        self.s_feat = self.s_question + self.s_answer * self.q_num
         self.s_feat[self.s_question == self.Q_PADDING] = self.I_PADDING
 
         self.return_all_length_seq = True
+
+
 class KTDataset_SA(KTDataset):
     def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len):
         super(KTDataset_SA, self).__init__(q_num, s_num, questions, skills, answers, seq_len, max_seq_len)
@@ -526,6 +579,7 @@ def is_ascending(seq):
         if seq[i] > seq[i - 1]: return False
     return True
 
+
 def preprocess():
     csv_path = "/Users/watsonyang/PycharmProjects/MyKT/Dataset/assist2009_updated/assist2009_updated_test.csv"
     concept_num = 110
@@ -550,6 +604,7 @@ def preprocess():
             else:
                 pass
         print("Ascending Sequence Count:", ascending_count)
+
 
 def wtf_get_question_trans_graph():
     # questions = torch.FloatTensor([
@@ -693,7 +748,7 @@ def verify_generate_multi_skill_sequence():
     testset.generate_multi_skill_seq()
 
     #
-    for f,q,s,a,l in testset:
+    for f, q, s, a, l in testset:
         print('--------------------')
         print(f[:l])
         print(q[:l])

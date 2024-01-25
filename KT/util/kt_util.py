@@ -368,7 +368,11 @@ def load_ednet_re(args):
                          qs_mapping=qs_mapping,
                          sq_mapping=sq_mapping,
                          )
-
+    total_set = train_set.merge(test_set)
+    total_set.generate_seq_all_length()
+    total_set.generate_multi_skill_seq()
+    total_set.save(os.path.join(data_path,'total_dataset_skill_level.pt'))
+    exit(-1)
     print("Done Loading Datasets")
     qs_matrix = train_set.get_qs_matrix()
     return train_set, test_set, qs_matrix
@@ -434,7 +438,7 @@ def load_assist09_q(args):
                                                                 skill_select_strategy=skill_select_strategy,
                                                                 dataset_scale=dataset_scale)
 
-        train_data, test_data = train_test_split([y_merged, s_merged, q_merged, real_len_merged], random_split=False)
+        train_data, test_data = train_test_split([y_merged, s_merged, q_merged, real_len_merged],split=0.95, random_split=False)
         train_y, train_s, train_q, train_real_len = train_data[0], train_data[1], train_data[2], train_data[3]
         test_y, test_s, test_q, test_real_len = test_data[0], test_data[1], test_data[2], test_data[3]
         if not always_load_from_preprocess:
@@ -478,9 +482,19 @@ def load_assist09_q(args):
                          qs_mapping=qs_mapping,
                          sq_mapping=sq_mapping,
                          )
+
+
+
+    total_set = train_set.merge(test_set)
+    total_set.generate_seq_all_length()
+    total_set.generate_multi_skill_seq()
+    total_set.save(os.path.join(data_path,'total_dataset_skill_level.pt'))
+
     print(f'Done Loading Assist09-Question-Level , train_size: {len(train_set)} test_size: {len(test_set)}')
     qs_matrix = train_set.get_qs_matrix()
-
+    if args.skill_level_eval:
+        test_set.generate_seq_all_length()
+        test_set.generate_multi_skill_seq()
     return train_set, test_set, qs_matrix
 
 
