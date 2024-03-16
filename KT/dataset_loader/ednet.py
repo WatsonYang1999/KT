@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from KT.KTDataloader import KTDataset
+from KT.kt_dataset import KTDataset
 from util.kt_util import train_test_split
 from torch.utils.data import DataLoader, random_split
 

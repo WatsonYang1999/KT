@@ -1,13 +1,16 @@
 import logging
+from random import random
 
-import numpy
+import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.data import random_split
-import torch.nn.functional as F
-import numpy as np
+
 from KT.util.decorators import timing_decorator
+import pickle
+import json
+import os
 
 random_seed = 42
 
@@ -37,93 +40,174 @@ def convert_to_tensor(arr):
 
 
 class KTDataset(Dataset):
-    def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len, qs_mapping=None, sq_mapping=None,
-                 remapping=False, item_start_from_one=True):
+    def __init__(self, args, qs_matrix):
 
         super(KTDataset, self).__init__()
+        self.dataset = args.dataset
+
+        self.device = 'cuda' if (args.cuda and torch.cuda.is_available()) else 'cpu'
+
+
+        self.qs_matrix = qs_matrix
         self.Q_PADDING = 0
         self.S_PADDING = 0
         self.A_PADDING = -1
         self.I_PADDING = 0
+        self.T_PADDING = 0.
 
-        self.q_num = q_num
-        self.s_num = s_num
-        self.questions = convert_to_tensor(questions)
-        self.skills = convert_to_tensor(skills)
+        self.q_num = args.q_num
+        self.s_num = args.s_num
+        self.max_seq_len = args.max_seq_len
 
-        # if skills is None:
-        #     self.skills = self.questions
-        self.answers = convert_to_tensor(answers)
-        self.seq_len = convert_to_tensor(seq_len)
+        # todo: add condition to allow checking and loading dataset of different scale (full or trial)
 
-        self.max_seq_len = max_seq_len
-        # need some calculation
+        if os.path.exists(os.path.join(args.dataset_path, 'feed_dict.pkl')):
+            with open(os.path.join(args.dataset_path, 'feed_dict.pkl'), 'rb') as f:
+                self.feature_dict = pickle.load(f)
+            print('Loading From Pickle')
+        else:
+            # load and cut the seq, then save the feed dict to pickle for faster loading
+            print('Loading From Preprocessed')
+            with open(os.path.join(args.dataset_path, 'user_seq.json'), 'r') as f:
+                user_seqs = json.load(f)
+            user_seqs = {key: user_seqs[key] for key in list(user_seqs.keys())}
+            self.feature_dict = self.seqs_to_tensors(user_seqs, args.max_seq_len)
 
-        assert torch.max(self.seq_len) <= self.max_seq_len
+            with open(os.path.join(args.dataset_path, 'feed_dict.pkl'), 'wb') as f:
+                pickle.dump(self.feature_dict, f)
+        # Design this in a more extendable approach, we don't actually have to load these specific features.
+        # Just handle the feature and let the model decide which to load
+        self.questions = self.feature_dict['question']
+        self.skills = self.feature_dict['skill']
 
-        self.qs_mapping = qs_mapping
-        self.sq_mapping = sq_mapping
+        self.answers = self.feature_dict['answer']
+        self.time = self.feature_dict['time']
+        self.seq_len = self.feature_dict['seq_len']
+
+        answers_one = (self.answers == 1.0)
+        self.features = answers_one * self.q_num + self.questions
+
         self.q_trans_graph = None
         self.s_trans_graph = None
 
+        # if True, dataset will first generate sample for all possible length of sequence
+        # and after some evaluation this process is quite neccessary if you want to explore the issue of label leakage
         self.return_all_length_seq = False
 
-        if remapping:
-            print('remapping the qid and sid to [1,q_num] and [1,s_num]')
-            '''
-                remapping the qid and sid to [1,q_num] and [1,s_num]
-                while doing this, the qs mapping also have to be updated
-            '''
-            self.sid_remapping = {}
-            self.qid_remapping = {}
-            for i in range(1, len(self.qs_mapping) + 1):
-                self.qid_remapping[list(self.qs_mapping.keys())[i - 1]] = i
-            for i in range(1, len(self.sq_mapping) + 1):
-                self.sid_remapping[list(self.sq_mapping.keys())[i - 1]] = i
-
-            # assert 16229 in self.sq_mapping.keys()
-            import pickle
-            with open('ednet-remapping.pkl', 'wb') as f:
-                pickle.dump((self.sid_remapping, self.qid_remapping), f)
-            self.sid_remapping_reverse = {value: key for key, value in self.sid_remapping.items()}
-            self.qid_remapping_reverse = {value: key for key, value in self.qid_remapping.items()}
-
-            qid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.qid_remapping[x])
-
-            self.questions = convert_to_tensor(qid_vectorized_mapping(self.questions))
-            if self.skills is not None:
-                sid_vectorized_mapping = np.vectorize(lambda x: 0 if x < 0 else self.sid_remapping[x])
-                self.skills = convert_to_tensor(sid_vectorized_mapping(self.skills))
-
-            # re-calculate qs-matrix base on remapped index
-            self.qs_matrix = np.zeros([self.q_num + 1, self.s_num + 1], dtype=int)
-            for q, s_list in qs_mapping.items():
-                qid_remapped = self.qid_remapping[q]
-                s_list = [self.sid_remapping[s] for s in s_list]
-                for sid_remapped in s_list:
-                    self.qs_matrix[qid_remapped, sid_remapped] = 1
-
-        answers_one = (self.answers == 1.0)
-        self.qs_matrix = torch.from_numpy(self.qs_matrix)
-        assert questions.shape == answers.shape
-        self.features = answers_one * self.q_num + self.questions
         assert isinstance(self.features, torch.Tensor)
         assert torch.max(self.answers) <= 1
         assert torch.min(self.answers) >= -1
         # this loading process is way fucking too slow that can be optimized greatly
 
-    def init_by_raw_sequences(self, q_seq, a_seq, qs_mapping):
-        pass
+    def seqs_to_tensors(self, seqs, max_len, min_seq_len=5, skill_select_strategy='first_select',
+                        dataset_scale='full'):
+        '''
+        :param seqs:seqs[uid] = {"question": q_seq, "result": r_seq, 'time': t_seq}
+        '''
+        q_seq_list = []
+        y_seq_list = []
+        s_seq_list = []
+        seq_len_list = []
+        t_seq_list = []
+
+        def pad(seq, max_len, pad_value):
+            if len(seq) < max_len:
+                return seq + [pad_value for _ in range(0, max_len - len(seq))]
+            return seq[:max_len]
+
+        from tqdm import tqdm
+        i = 0
+        mini_size = 3000
+
+        break_into_multi_seqs = False
+
+        for uid, seqs in tqdm(seqs.items(), desc="Processing", unit="iteration", ncols=80):
+
+            q_seq = seqs['question']
+            a_seq = seqs['result']
+            t_seq = seqs['time']
+            seq_len = len(q_seq)
+
+            if seq_len < min_seq_len:
+                continue
+
+            def select_skill(qid):
+                if skill_select_strategy == 'first_select':
+                    return self.q2s(qid)[0]
+
+            if skill_select_strategy == 'total_random':
+                pass
+                # random_skill_list = random.choices(list(sq_mapping.keys()), k=len(q_seq))
+                # s_seq = random_skill_list
+
+            else:
+                s_seq = [select_skill(q) for q in q_seq]
+
+            if break_into_multi_seqs:
+                while seq_len > max_len:
+                    q_seq_list.append(q_seq[:max_len])
+                    q_seq = q_seq[max_len:]
+                    y_seq_list.append(a_seq[:max_len])
+                    a_seq = a_seq[max_len:]
+                    s_seq_list.append(s_seq[:max_len])
+                    s_seq = s_seq[max_len:]
+                    seq_len_list.append(max_len)
+                    seq_len -= max_len
+
+                q_seq_list.append(pad(q_seq, max_len, q_padding))
+                y_seq_list.append(pad(a_seq, max_len, y_padding))
+                s_seq_list.append(pad(s_seq, max_len, s_padding))
+                seq_len_list.append(min(seq_len, max_len))
+                i += 1
+            else:
+                q_seq_list.append(pad(q_seq, max_len, self.Q_PADDING))
+                y_seq_list.append(pad(a_seq, max_len, self.A_PADDING))
+                s_seq_list.append(pad(s_seq, max_len, self.S_PADDING))
+                t_seq_list.append(pad(t_seq, max_len, self.T_PADDING))
+                seq_len_list.append(min(seq_len, max_len))
+                i += 1
+            if dataset_scale == 'mini':
+                if i > mini_size:
+                    break
+        return {
+            'question': torch.tensor(q_seq_list, dtype=torch.int32),
+            'skill': torch.tensor(s_seq_list, dtype=torch.int32),
+            'answer': torch.tensor(y_seq_list, dtype=torch.int32),
+            'seq_len': torch.tensor(seq_len_list, dtype=torch.int32),
+            'time': torch.tensor(t_seq_list, dtype=torch.float)
+        }
 
     def __getitem__(self, index):
         '''
             this part requires a lot of update to fit different datasets
+            besides we extend the features so that now it can handles any additional features such as time or whatever
         '''
 
+        # older version
+        # if self.return_all_length_seq:
+        #     return self.s_feat[index], self.s_question[index], self.s_skill[index], self.s_answer[index], \
+        #            self.s_seq_len[index]
+        # return self.features[index], self.questions[index], self.skills[index], self.answers[index], self.seq_len[index]
         if self.return_all_length_seq:
-            return self.s_feat[index], self.s_question[index], self.s_skill[index], self.s_answer[index], \
-                   self.s_seq_len[index]
-        return self.features[index], self.questions[index], self.skills[index], self.answers[index], self.seq_len[index]
+            feed_dict = None
+            # feed_dict = {
+            #     'features': self.s_feat[index],
+            #     'questions': self.s_question[index],
+            #     'skills': self.s_skill[index],
+            #     'answers': self.s_answer[index],
+            #     'seq_len': self.s_seq_len[index]
+            # }
+        else:
+
+            feed_dict = {
+                'question_answer': self.features[index].to(self.device),
+                'question': self.questions[index].to(self.device),
+                'skill': self.skills[index].to(self.device),
+                'answer': self.answers[index].to(self.device),
+                'seq_len': self.seq_len[index].to(self.device),
+                'time': self.time[index].to(self.device),
+            }
+        return feed_dict
 
     def __len__(self):
         if self.return_all_length_seq:
@@ -142,7 +226,8 @@ class KTDataset(Dataset):
             's_skill': self.s_skill,
             's_answer': self.s_answer,
             's_seq_len': self.s_seq_len,
-            'return_all_length_seq': self.return_all_length_seq
+            'return_all_length_seq': self.return_all_length_seq,
+            'extra_features': self.extra_features
         }
         torch.save(data_dict, datapath)
 
@@ -164,6 +249,7 @@ class KTDataset(Dataset):
             self.s_answer = data_dict['s_answer'],
             self.s_seq_len = data_dict['s_seq_len'],
             self.return_all_length_seq = return_all_length_seq
+        self.extra_features = data_dict['extra_features']
 
     def merge(self, another_kt_set):
         if not isinstance(another_kt_set, KTDataset):
@@ -419,7 +505,7 @@ class KTDataset(Dataset):
             make sure this function is used on question-level sequence, that the multi-skill interaction
             is NOT split into multi interaction
             should we just do it in preprocessing
-
+            ToDo: Move this part to preprocessing, cuz tensor is way harder to handle
         """
 
         interaction_s = []
@@ -477,11 +563,11 @@ class KTDataset(Dataset):
         self.return_all_length_seq = True
 
 
-class KTDataset_SA(KTDataset):
-    def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len):
-        super(KTDataset_SA, self).__init__(q_num, s_num, questions, skills, answers, seq_len, max_seq_len)
-        answers_one = (answers == 1.0)
-        self.features = answers_one * self.s_num + self.skills
+# class KTDataset_SA(KTDataset):
+#     def __init__(self, q_num, s_num, questions, skills, answers, seq_len, max_seq_len):
+#         super(KTDataset_SA, self).__init__(q_num, s_num, questions, skills, answers, seq_len, max_seq_len)
+#         answers_one = (answers == 1.0)
+#         self.features = answers_one * self.s_num + self.skills
 
 
 def pad_collate(batch):

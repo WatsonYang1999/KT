@@ -6,25 +6,31 @@ from tqdm import tqdm
 from KT.util.decorators import timing_decorator
 
 
-def inference(features, questions, skills, labels, seq_len, model, loss_func):
+def inference(batch, model, loss_func):
+    #todo : a better apporoach: let model load their features separately
+    features = batch['question_answer']
+    questions = batch['question']
+    skills = batch['skill']
+    labels = batch['answer']
+    seq_len = batch['seq_len']
     if model._get_name() == 'DKT':
-        pred = model(features, questions, skills, labels)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        pred = model(batch)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
 
     elif model._get_name() == 'DKT_AUG':
         pred = model(features, questions, labels, seq_len)
         assert torch.all(pred > 0)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
     elif model._get_name() == 'DKT_PEBG':
         pred = model(questions, labels)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
         # l2_lambda = 0.00001
         # l2_norm = sum(p.pow(2.0).sum()
         #               for p in model.parameters())
         # loss_kt = loss_kt + l2_lambda * l2_norm
     elif model._get_name() == 'DKT_PLUS':
         pred = model(questions, labels)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
         # l2_lambda = 0.00001
         # l2_norm = sum(p.pow(2.0).sum()
         #               for p in model.parameters())
@@ -33,7 +39,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
 
         pred = model(features, questions, labels)
 
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
         l2_lambda = 0.001
         l2_norm = sum(p.pow(2.0).sum()
                       for p in model.parameters())
@@ -50,11 +56,11 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
         filtered_pred[filtered_pred >= 0.5] = 1.0
         filtered_pred[filtered_pred < 0.5] = 0.0
         acc = accuracy_score(filtered_target, filtered_pred)
-        rmse = calculate_rmse_sklearn(filtered_target,filtered_pred)
+        rmse = calculate_rmse_sklearn(filtered_target, filtered_pred)
         exit(-1)
     elif model._get_name() == 'GKT':
         pred, ec_list, rec_list, z_prob_list = model(features, questions)
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
     elif model._get_name() in {'SAKT', 'SAKT_SKILL'}:
         input_len = features.shape[1]
         batch_size = features.shape[0]
@@ -71,7 +77,7 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
 
         pred = model(features, questions, labels)
 
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
 
 
     elif model._get_name() == 'AKT':
@@ -79,19 +85,15 @@ def inference(features, questions, skills, labels, seq_len, model, loss_func):
         correct = (labels == 1)
         features = torch.IntTensor(skills.cpu().numpy() + correct.cpu().numpy() * s_num).to(skills.device)
 
-        pred, c_loss = model(
-            skills,
-            features,
-            questions
-        )
-        loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+        pred, c_loss = model(batch)
+        loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
     else:
         loss_kt = None
         auc = None
         acc = None
         rmse = None
 
-    return loss_kt, auc, acc,rmse
+    return loss_kt, auc, acc, rmse
 
 
 def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda):
@@ -102,12 +104,8 @@ def train_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda)
     rmse_train = []
     for batch in tqdm(data_loader, desc="Training batches", leave=False, ncols=80):
         optimizer.zero_grad()
-        features, questions, skills, labels, seq_len = batch
 
-        if cuda:
-            features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
-
-        loss_kt, auc, acc, rmse = inference(features, questions, skills, labels, seq_len, model, loss_func)
+        loss_kt, auc, acc, rmse = inference(batch, model, loss_func)
         loss_train.append(loss_kt.cpu().detach().numpy())
         auc_train.append(auc)
         acc_train.append(acc)
@@ -145,13 +143,8 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
     optimizer_file = save_dir + '/' + 'opt.pt'
 
     with torch.no_grad():
-
         for batch_idx, batch in tqdm(enumerate(data_loader), desc="Validating batches", unit="iteration", ncols=80):
-            features, questions, skills, labels, seq_len = batch
-            if cuda:
-                features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
-
-            loss_kt, auc, acc, rmse = inference(features, questions, skills, labels, seq_len, model, loss_func)
+            loss_kt, auc, acc, rmse = inference(batch, model, loss_func)
             loss_val.append(loss_kt.cpu())
             auc_val.append(auc)
             acc_val.append(acc)
@@ -166,6 +159,7 @@ def val_epoch(model: nn.Module, data_loader, optimizer, loss_func, logs, cuda=Fa
         logs['val_auc'].append(np.mean(auc_val))
         logs['val_acc'].append(np.mean(acc_val))
         logs['val_rmse'].append(np.mean(rmse_val))
+
 
 def train(model: nn.Module, data_loaders, optimizer, loss_func, args):
     # train loop
@@ -272,6 +266,7 @@ def test(model: nn.Module, data_loader, optimizer, loss_func, n_epochs, cuda=Tru
 
     return hidden_total
 
+
 def gen_sequence_align_verify_data():
     check_seq_prediction_align = False
     max_seq_len = 200
@@ -279,17 +274,18 @@ def gen_sequence_align_verify_data():
         custom_s_num = 50
         custom_size = custom_s_num
         q_custom = torch.zeros([custom_size, max_seq_len], dtype=int)
-        y_custom =  -1 * torch.ones([custom_size, max_seq_len], dtype=float)
+        y_custom = -1 * torch.ones([custom_size, max_seq_len], dtype=float)
         f_custom = torch.zeros([custom_size, max_seq_len], dtype=int)
         print(q_custom[0])
-        for i in range(0,custom_s_num):
-            q_custom[:,i] = i
-            f_custom[:,i] = i
-            y_custom[:,i] = 1.0
+        for i in range(0, custom_s_num):
+            q_custom[:, i] = i
+            f_custom[:, i] = i
+            y_custom[:, i] = 1.0
 
         diagonal_matrix = torch.tril(torch.ones((custom_s_num, custom_s_num), dtype=torch.bool))
-        mask = torch.cat([diagonal_matrix,torch.zeros([custom_s_num,max_seq_len-custom_s_num],dtype=torch.bool)],dim=1)
-        mask = (mask==False)
+        mask = torch.cat([diagonal_matrix, torch.zeros([custom_s_num, max_seq_len - custom_s_num], dtype=torch.bool)],
+                         dim=1)
+        mask = (mask == False)
         q_custom[mask] = 0
         y_custom[mask] = -1
         f_custom[mask] = 0
@@ -297,7 +293,8 @@ def gen_sequence_align_verify_data():
         print(y_custom)
         print(f_custom)
 
-    return q_custom,y_custom,f_custom
+    return q_custom, y_custom, f_custom
+
 
 def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
     # evaluate the train dataset
@@ -343,7 +340,6 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
     co_relavance_upgrade = torch.zeros([s_num + 1, s_num + 1])
     co_relavance_downgrade = torch.zeros([s_num + 1, s_num + 1])
 
-
     custom_bs = 10
     batch_idx = 0
     pred = None
@@ -361,7 +357,7 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
 
     torch.set_printoptions(precision=None, threshold=None, edgeitems=None, linewidth=None, profile=None)
 
-    print(pred[:10,:10])
+    print(pred[:10, :10])
     exit(-1)
     for i in range(s_num ** 2):
         qi = q_custom[4 * i:4 * i + 4, :]
@@ -420,6 +416,7 @@ def evaluate_akt(model: nn.Module, data_loaders, loss_func, cuda=False):
 
     # evaluate the test dataset
 
+
 @timing_decorator
 def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
     s_num = 117
@@ -457,17 +454,17 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
     if check_seq_prediction_align:
         custom_size = s_num
         q_custom = torch.zeros([custom_size, pad_len], dtype=int).to(device)
-        y_custom =  -1 * torch.ones([custom_size, pad_len], dtype=float).to(device)
+        y_custom = -1 * torch.ones([custom_size, pad_len], dtype=float).to(device)
         f_custom = torch.zeros([custom_size, pad_len], dtype=int).to(device)
         print(q_custom[0])
-        for i in range(0,s_num):
-            q_custom[:,i] = i
-            f_custom[:,i] = i
-            y_custom[:,i] = 1.0
+        for i in range(0, s_num):
+            q_custom[:, i] = i
+            f_custom[:, i] = i
+            y_custom[:, i] = 1.0
 
         diagonal_matrix = torch.tril(torch.ones((s_num, s_num), dtype=torch.bool))
-        mask = torch.cat([diagonal_matrix,torch.zeros([s_num,max_seq_len-s_num],dtype=torch.bool)],dim=1)
-        mask = (mask==False)
+        mask = torch.cat([diagonal_matrix, torch.zeros([s_num, max_seq_len - s_num], dtype=torch.bool)], dim=1)
+        mask = (mask == False)
         q_custom[mask] = 0
         y_custom[mask] = -1
         f_custom[mask] = 0
@@ -522,7 +519,6 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
         print(f'({i},{j}) : {co_relavance_upgrade[i, j]}')
     exit(-1)
 
-
     for dataset_type, data_loader in data_loaders.items():
         print(f'evaluating dataset : {dataset_type}')
 
@@ -536,7 +532,7 @@ def evaluate_sakt(model: nn.Module, data_loaders, loss_func, cuda=False):
                 features, questions, skills, labels = features.cuda(), questions.cuda(), skills.cuda(), labels.cuda()
             pred = model(questions, features, labels)
 
-            loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+            loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
             print(loss_kt)
             print(auc)
             print(acc)
@@ -578,7 +574,7 @@ def evaluate_sakt_skill(model: nn.Module, data_loaders, loss_func, cuda=False):
             pred = model(features, questions, labels)
             assert torch.all(pred > 0)
             pred_copy = pred.clone()
-            loss_kt, auc, acc, rmse = loss_func(pred, labels,seq_len)
+            loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)
 
             def print_result(q, s, y, l, p, loss, auc, acc):
                 print(l)
@@ -687,7 +683,7 @@ def rank_data_performance(model, data_loader, loss_func, cuda=True):
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(new_data_loader):
-
+            # todo : update
             features, questions, skills, labels, seq_len = batch
 
             if cuda:

@@ -37,7 +37,7 @@ def set_parser():
     parser.add_argument('--custom_data', type=str_to_bool, default='False',
                         help='Use your own custom data')
 
-    parser.add_argument('--skill_level_eval', type=str_to_bool, default='True',
+    parser.add_argument('--skill_level_eval', type=str_to_bool, default='False',
                         help='Evaluate the model on skill_level and try to address the label leakage issue')
 
     parser.add_argument('--lr', type=float, default=0.0001, help='Initial learning rate.')

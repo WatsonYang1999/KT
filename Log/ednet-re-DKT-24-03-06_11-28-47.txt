@@ -1,0 +1,8 @@
+2024-03-06 11:28:47,432 [INFO] Namespace(batch_size=16, checkpoint_dir='C:\\Users\\12574\\Desktop\\KT-Refine\\checkpoints', cuda=True, current_epoch=0, custom_data=False, data_augment=False, dataset='ednet-re', dataset_path='Dataset/ednet-re/preprocessed', device=device(type='cuda'), dropout=0.2, edge_types=2, embed_dim=128, eval=False, graph_type='PAM', hidden_dim=50, log_file='', lr=0.0001, max_seq_len=200, memory_size=20, metrics=['train_auc', 'train_loss', 'train_acc', 'train_rmse', 'val_auc', 'val_loss', 'val_acc', 'val_rmse'], model='DKT', n_epochs=5, n_heads=4, output_dim=100, pretrain='load', pretrain_embed_file='Dataset/ednet-re/embed_pretrain.npz', q_num=27613, qs_matrix=array([[0, 0, 0, ..., 0, 0, 0],
+       [0, 1, 1, ..., 0, 0, 0],
+       [0, 1, 0, ..., 0, 0, 0],
+       ...,
+       [0, 1, 1, ..., 0, 0, 0],
+       [0, 1, 1, ..., 0, 0, 0],
+       [0, 1, 1, ..., 0, 0, 0]]), s_num=388, shuffle=False, skill_level_eval=False, train_from_scratch=True)
+2024-03-06 11:28:47,432 [INFO] -----------------------------------------------------------

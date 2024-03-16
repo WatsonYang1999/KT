@@ -50,6 +50,7 @@ class AKT(nn.Module):
             self.q_embed_diff = nn.Embedding(self.s_num+1, embed_l)
             self.qa_embed_diff = nn.Embedding(2 * self.s_num + 1, embed_l)
         # s_num+1 ,d_model
+        # todo : check this part : why is it s_num not q_num?
         self.q_embed = nn.Embedding(self.s_num+1, embed_l)
         if self.separate_qa:
             self.qa_embed = nn.Embedding(2*self.s_num+1, embed_l)
@@ -73,9 +74,16 @@ class AKT(nn.Module):
             if p.size(0) == self.q_num+1 and self.q_num > 0:
                 torch.nn.init.constant_(p, 0.)
 
-    def forward(self, q_data, qa_data, pid_data=None):
+    def forward(self, feed_dict):
         # Batch First
-
+        q_data = feed_dict['question']
+        qa_data = feed_dict['question_answer']
+        if 'skill' in feed_dict.keys():
+            pid_data = feed_dict['skill']
+        else:
+            pid_data = None
+        print(q_data.max())
+        print(self.q_embed.weight.shape)
         assert q_data.max() < self.q_embed.weight.shape[0]
         assert q_data.min() >= 0
         assert qa_data.min() >=0

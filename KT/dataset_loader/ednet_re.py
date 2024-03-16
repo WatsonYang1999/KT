@@ -12,7 +12,9 @@ def simple_observe(df: pd.DataFrame):
     print(df.head(10))
     print(df.describe())
 
+from KT.util.decorators import suit_directory_decorator
 
+@suit_directory_decorator()
 def build_user_sequences(file_path):
     try:
         df = pd.read_csv(file_path)
@@ -35,7 +37,7 @@ def build_user_sequences(file_path):
 
     return seqs
 
-
+@suit_directory_decorator()
 def load_qs_relations(data_path = 'Dataset/ednet-re/data/metadata/question_metadata_task_1_2.csv'):
     df = pd.read_csv(data_path)
     print(df)
@@ -58,9 +60,53 @@ def load_qs_relations(data_path = 'Dataset/ednet-re/data/metadata/question_metad
     # print(qs_mapping)
     # print(sq_mapping)
     return qs_mapping, sq_mapping
+@suit_directory_decorator()
+def analyse_qs_relation(data_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\question_metadata_task_1_2.csv'):
+    df = pd.read_csv(data_path)
+    print(df)
+    qs_mapping = {}
+    sq_mapping = {}
+    qs_edge_count = 0
+    s_combination_set = set()
+    for idx, row in df.iterrows():
+        qid = row['QuestionId']
+        import ast
+        s_combination_set.add(row['SubjectId'])
+        sid_set = ast.literal_eval(row['SubjectId'])
 
+        for sid in sid_set:
+            qs_edge_count += 1
+            if sid not in sq_mapping.keys():
+                sq_mapping[sid] = set()
+            sq_mapping[sid].add(qid)
+
+            if qid not in qs_mapping.keys():
+                qs_mapping[qid] = set()
+            qs_mapping[qid].add(sid)
+    q_s_count = {}
+    for q in qs_mapping.keys():
+        q_s_count[q] = len(qs_mapping[q])
+
+    print(q_s_count)
+    print(qs_edge_count / len(qs_mapping))
+    print(s_combination_set)
+    print(len(s_combination_set))
+
+@suit_directory_decorator()
 def load_knowledge_structure(data_path=r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\metadata\subject_metadata.csv'):
-    pass
+    df = pd.read_csv(r'C:\Users\12574\Documents\GitHub\Ednet-KT\data\metadata\subject_metadata.csv')
+    print(df.columns)
+    edge_list = []
+    for idx, row in df.iterrows():
+        sid = int(row['SubjectId'])
+        s_name = row['Name']
+        if pd.isna(row['ParentId']):
+            s_parent_id = None
+        else:
+            s_parent_id = int(row['ParentId'])
+            edge_list.append((s_parent_id, sid))
+        level = row['Level']
+    return edge_list
 #
 #     df = pd.read_csv(data_path)
 #     print(df.columns)
@@ -180,6 +226,7 @@ def load_knowledge_structure(data_path=r'C:\Users\12574\Desktop\KT-Refine\Datase
 #     # print(skillgraph.level_order_traversal())
 #     skillgraph.visualize()
 
+@suit_directory_decorator()
 def frequency_count(data_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\train_data\train_task_1_2.csv'):
 
     seqs = build_user_sequences(data_path)
@@ -198,10 +245,23 @@ def frequency_count(data_path = r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet
     print(skill_freq)
     return skill_freq
 
+def preprocess():
+    qs_mapping, sq_mapping = load_qs_relations()
+    skill_edge_list = load_knowledge_structure()
+    # 1. remapping the question id and skill id
+
+
+    # 2. build and remap the user sequence , in this part also extend the function so that it supports extra feature
+    #seqs = build_user_sequences(r'C:\Users\12574\Desktop\KT-Refine\Dataset\ednet-re\data\total_time_ordered.csv')
+
+
+    print(seqs)
 
 if __name__ == '__main__':
     # simple_observe(df_train)
     # build_user_sequences(df_train)
     # load_qs_relations()
-    load_knowledge_structure()
+    # load_knowledge_structure()
     # frequency_count()
+    # analyse_qs_relation()
+    preprocess()

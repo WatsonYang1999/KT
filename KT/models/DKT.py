@@ -297,7 +297,12 @@ class DKT(nn.Module):
         # assert_non_zero(self._get_next_pred(yt, questions))
         return self._get_next_pred(yt, questions)
 
-    def forward(self, features, questions, skills, labels):
+    def forward(self, batch):
+        features = batch['question_answer']
+        questions = batch['question']
+        skills = batch['skill']
+        labels = batch['answer']
+        seq_len = batch['seq_len']
         return self.forward_without_skill(features, questions, labels)
 
     def load(self, ):

@@ -70,7 +70,7 @@ class GKT(nn.Module):
     def __init__(self, concept_num, hidden_dim, embedding_dim, edge_type_num, graph_type, graph=None, graph_model=None,
                  dropout=0.5, bias=True, binary=False, has_cuda=False):
         super(GKT, self).__init__()
-
+        print(concept_num)
         self.concept_num = concept_num+1
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
