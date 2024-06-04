@@ -57,7 +57,7 @@ def inference(batch, model, loss_func):
         filtered_pred[filtered_pred < 0.5] = 0.0
         acc = accuracy_score(filtered_target, filtered_pred)
         rmse = calculate_rmse_sklearn(filtered_target, filtered_pred)
-        exit(-1)
+
     elif model._get_name() == 'GKT':
         pred, ec_list, rec_list, z_prob_list = model(features, questions)
         loss_kt, auc, acc, rmse = loss_func(pred, labels, seq_len)

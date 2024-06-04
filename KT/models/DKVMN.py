@@ -207,7 +207,7 @@ class DKVMN(nn.Module):
         nn.init.kaiming_normal_(self.qa_embed.weight)
 
 
-    def forward(self, q_data, qa_data,pid_data, target,student_id=None):
+    def forward(self, q_data, qa_data, target,pid_data=None,student_id=None):
 
         seqlen = q_data.shape[1]
         batch_size = q_data.shape[0]
