@@ -3,5 +3,5 @@ Dataset/junyi/processed_data.pkl
 __pycache__
 Checkpoints
 checkpoints
-Dataset
+Dataset/
 KT/util/.vector_cache
